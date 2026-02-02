@@ -32,7 +32,6 @@ loguru>=0.7.0
 
 # Data Storage
 sqlalchemy>=2.0.0
-sqlite3  # Built-in
 
 # Configuration
 pyyaml>=6.0.1
