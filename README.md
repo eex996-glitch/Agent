@@ -1,6 +1,6 @@
 # Futures Trading Agent (Kali Linux Edition)
 
-Automated futures trading system for prop firm evaluations (Topstep, Apex, etc.)
+Automated futures trading system for MyFundedFutures (MFFU) prop firm evaluations.
 
 ## Features
 
@@ -10,8 +10,9 @@ Automated futures trading system for prop firm evaluations (Topstep, Apex, etc.)
 - **Backtest**: Test strategies on historical data
 - **Paper Trading**: Local simulation (no API needed)
 - **Demo Trading**: Tradovate demo account via API
-- **Live Trading**: Apex Trader Funding via Tradovate API
+- **Live Trading**: MyFundedFutures via Tradovate API
 - **Sentiment-Based Trading**: News sentiment automatically adjusts trading parameters
+- **MFFU Rules**: Built-in EOD trailing drawdown, scaling plans, no consistency rule
 
 ## Quick Start (Kali Linux)
 
@@ -84,12 +85,12 @@ export TRADOVATE_SEC='your_secret_key'
 python main.py --mode demo --symbol MESZ4
 ```
 
-### Live Trading (Apex/Tradovate)
-Trade real money on your Apex account:
+### Live Trading (MyFundedFutures/Tradovate)
+Trade real money on your MFFU funded account:
 ```bash
 # Set credentials
-export TRADOVATE_USERNAME='your_apex_username'
-export TRADOVATE_PASSWORD='your_apex_password'
+export TRADOVATE_USERNAME='your_mffu_username'
+export TRADOVATE_PASSWORD='your_mffu_password'
 export TRADOVATE_CID='your_client_id'
 export TRADOVATE_SEC='your_secret_key'
 
@@ -97,27 +98,48 @@ export TRADOVATE_SEC='your_secret_key'
 python main.py --mode live --symbol MESZ4
 ```
 
-## Getting Tradovate API Access
+## Getting Started with MyFundedFutures
 
+### Step 1: Sign Up for MFFU Evaluation
+1. **Visit**: https://myfundedfutures.com
+2. **Choose Account**: Starter ($50K), Standard ($100K), or Premium ($150K)
+3. **Pay Evaluation Fee**: $150-$350/month depending on tier
+
+### Step 2: Get Tradovate API Access
 1. **Create Tradovate Account**: https://www.tradovate.com
-2. **Fund Account**: $1,000+ required for API access
-3. **Enable API**: Settings > API Access > Purchase subscription
-4. **Generate Keys**: Click "Generate API Key", complete attestations
-5. **Save Credentials**: Store CID (Client ID) and SEC (Secret Key)
+2. **Enable API**: Settings > API Access
+3. **Generate Keys**: Click "Generate API Key"
+4. **Save Credentials**: Store CID (Client ID) and SEC (Secret Key)
 
-For **Apex Trader Funding**:
-- Use your Apex credentials (separate from direct Tradovate)
-- Connect via Tradovate platform
-- Same API endpoints work
+### Step 3: Connect MFFU to Tradovate
+- MFFU accounts connect through Tradovate platform
+- Use your MFFU credentials when prompted
+- Same API endpoints work for evaluation and funded accounts
 
-## Configuration
+## MyFundedFutures (MFFU) Rules
 
-### Account Sizes (Topstep Rules)
-| Size | Profit Target | Max Loss | Max Contracts |
-|------|--------------|----------|---------------|
-| 50K  | $3,000       | $2,000   | 5             |
-| 100K | $6,000       | $3,000   | 10            |
-| 150K | $9,000       | $4,500   | 15            |
+### Account Tiers
+| Tier | Size | Profit Target | Max Loss (EOD) | Max Contracts | Monthly Fee |
+|------|------|---------------|----------------|---------------|-------------|
+| Starter | $50K | $3,000 | $2,000 | 5 | $150 |
+| Standard | $100K | $6,000 | $3,500 | 10 | $250 |
+| Premium | $150K | $9,000 | $5,000 | 15 | $350 |
+
+### Key MFFU Advantages
+- **NO Daily Loss Limit** - Trade without daily caps
+- **NO Consistency Rule** - No restrictions on profit distribution
+- **EOD Trailing Drawdown** - More forgiving than real-time trailing
+- **No Time Limit** - Take as long as needed to pass
+- **80/20 Profit Split** - Upgradeable to 90/10
+- **Weekly Payouts** - Request payouts weekly after funded
+
+### Scaling Plan (Starter $50K Example)
+| Profit Level | Max Contracts |
+|--------------|---------------|
+| $0 - $999 | 2 |
+| $1,000 - $1,499 | 3 |
+| $1,500 - $1,999 | 4 |
+| $2,000+ | 5 |
 
 ### Environment Variables
 ```bash
@@ -210,7 +232,7 @@ futures_trading_agent/
 ├── requirements.txt             # Dependencies
 ├── config/
 │   ├── settings.py              # Configuration
-│   └── prop_firm_rules.py       # Topstep rules
+│   └── prop_firm_rules.py       # MFFU rules
 ├── data/
 │   └── fetcher.py               # Yahoo Finance data
 ├── strategy/
