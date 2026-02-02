@@ -16,6 +16,7 @@ from PyQt5.QtGui import QFont, QPalette, QColor
 from .dashboard import DashboardWidget
 from .news_feed import NewsFeedWidget
 from .model_health import ModelHealthWidget
+from .logs_widget import LogsWidget
 
 
 class MainWindow(QMainWindow):
@@ -217,6 +218,10 @@ class MainWindow(QMainWindow):
         # Model health tab
         self.model_health = ModelHealthWidget()
         self.tabs.addTab(self.model_health, "💚 Model Health")
+
+        # Logs tab
+        self.logs_widget = LogsWidget()
+        self.tabs.addTab(self.logs_widget, "📋 Logs")
 
     def setup_status_bar(self):
         """Setup the status bar"""

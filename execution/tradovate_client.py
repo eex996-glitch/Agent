@@ -3,9 +3,10 @@ Tradovate API Client for Paper and Live Trading
 
 Supports:
 - Demo/Paper trading (demo.tradovateapi.com)
-- Live trading via Apex Trader Funding (live.tradovateapi.com)
+- Live trading via MyFundedFutures/MFFU (live.tradovateapi.com)
 
 API Documentation: https://api.tradovate.com
+MFFU Website: https://myfundedfutures.com
 """
 
 import os
@@ -103,9 +104,9 @@ class AccountInfo:
 class TradovateClient:
     """
     Tradovate REST API Client
-    
+
     Supports both demo (paper) and live trading environments.
-    For Apex Trader Funding accounts, use the LIVE environment.
+    For MyFundedFutures (MFFU) accounts, use the LIVE environment.
     """
     
     # API Base URLs
