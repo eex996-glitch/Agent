@@ -169,6 +169,39 @@ export FINNHUB_KEY='your_key'        # Finnhub
 - Widens stop losses by 50%
 - Detected keywords: Fed, FOMC, CPI, Jobs Report, GDP
 
+## Performance Logging & GitHub Sync
+
+The system tracks all trading activity and syncs results to GitHub.
+
+### Features
+- **Session Logging**: Every trading session is recorded with full trade history
+- **Performance Metrics**: Win rate, profit factor, Sharpe ratio, drawdown, and more
+- **GitHub Sync**: Automatically push results to your GitHub repository
+- **CSV Export**: Export trades for external analysis
+
+### Logged Metrics
+| Metric | Description |
+|--------|-------------|
+| Win Rate | Percentage of profitable trades |
+| Profit Factor | Gross profit / Gross loss |
+| Sharpe Ratio | Risk-adjusted return measure |
+| Max Drawdown | Largest peak-to-trough decline |
+| Expectancy | Expected profit per trade |
+| Consistency Score | How evenly distributed profits are |
+
+### GitHub Sync
+Results are automatically synced to the `results/` directory:
+```
+results/
+├── PERFORMANCE_SUMMARY.md    # Overall statistics
+└── session_<id>/
+    ├── session.json          # Full session data
+    ├── trades.csv            # Trade list
+    └── report.md             # Markdown report
+```
+
+Each sync creates a commit with P&L summary in the message.
+
 ## Project Structure
 
 ```
@@ -192,14 +225,21 @@ futures_trading_agent/
 │   ├── tradovate_client.py      # Tradovate API client
 │   ├── trading_interface.py     # Unified interface
 │   └── live_trader.py           # Live trading runner
-├── gui/                         # Graphical Interface (NEW)
+├── gui/                         # Graphical Interface
 │   ├── main_window.py           # Main application window
 │   ├── dashboard.py             # Trading dashboard
 │   ├── news_feed.py             # News feed widget
-│   └── model_health.py          # Health visualization
-└── news/                        # News & Sentiment (NEW)
-    ├── fetcher.py               # Multi-source news fetcher
-    └── sentiment.py             # Sentiment analysis engine
+│   ├── model_health.py          # Health visualization
+│   └── logs_widget.py           # Logs display and GitHub sync
+├── news/                        # News & Sentiment
+│   ├── fetcher.py               # Multi-source news fetcher
+│   └── sentiment.py             # Sentiment analysis engine
+├── logs/                        # Performance Logging (NEW)
+│   ├── tracker.py               # Trade and session tracking
+│   ├── metrics.py               # Performance metrics calculator
+│   ├── storage.py               # Log persistence
+│   └── github_sync.py           # GitHub sync functionality
+└── results/                     # Synced results (gitignore optional)
 ```
 
 ## Strategy
