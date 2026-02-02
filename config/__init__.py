@@ -21,7 +21,7 @@ from .settings import (
 
 from .prop_firm_rules import (
     MFFURules,
-    MFFUFundedRules,
+    ExpressFundedRules,
     AccountTier,
     ScalingLevel,
     get_mffu_rules,
@@ -43,9 +43,9 @@ __all__ = [
     "MARKETS",
     "load_settings_from_env",
     
-    # Prop Firm Rules (MFFU)
+    # Prop Firm Rules
     "MFFURules",
-    "MFFUFundedRules",
+    "ExpressFundedRules",
     "AccountTier",
     "ScalingLevel",
     "get_mffu_rules",

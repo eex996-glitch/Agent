@@ -77,7 +77,7 @@ def show_config(args):
     print("="*50)
     print(f"\nAccount: ${args.account_size:,}")
     
-    rules = get_mffu_rules(f"{args.account_size//1000}K")
+    rules = MFFURules(f"{args.account_size//1000}K")
     print(f"Profit Target: ${rules.profit_target:,.0f}")
     print(f"Max Loss: ${rules.max_loss_limit:,.0f}")
 
@@ -139,7 +139,7 @@ def run_backtest(args):
     
     base = args.symbol.rstrip('0123456789').upper()
     market = MARKETS.get(base, MARKETS['MES'])
-    rules = get_mffu_rules(f"{args.account_size//1000}K")
+    rules = MFFURules(f"{args.account_size//1000}K")
     
     config = BacktestConfig(
         starting_balance=float(args.account_size),
