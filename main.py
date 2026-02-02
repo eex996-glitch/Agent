@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.settings import MARKETS
-from config.prop_firm_rules import get_topstep_rules
+from config.prop_firm_rules import MFFURules
 from data.fetcher import DataFetcher
 from strategy.trend_following import TrendFollowingStrategy
 from strategy.indicators import Indicators
