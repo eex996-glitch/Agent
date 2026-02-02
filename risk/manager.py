@@ -118,7 +118,7 @@ class RiskManager:
         max_risk_per_trade: float = 0.01,
         max_daily_trades: int = 20,
         max_consecutive_losses: int = 3,
-        use_daily_loss_limit: bool = False  # TopstepX doesn't use this
+        use_daily_loss_limit: bool = False  # MFFU doesn't use this
     ):
         """
         Initialize the risk manager
@@ -510,7 +510,7 @@ class RiskManager:
 
 # Example usage
 if __name__ == "__main__":
-    # Create risk manager for 50K Topstep account
+    # Create risk manager for 50K MFFU account
     rm = RiskManager(
         starting_balance=50000,
         max_loss_limit=2000,

@@ -4,7 +4,7 @@ Execution module for paper and live trading
 Supports:
 - Paper trading (local simulation)
 - Tradovate Demo (paper via Tradovate API)
-- Tradovate Live (Apex Trader Funding, etc.)
+- Tradovate Live (MyFundedFutures/MFFU)
 """
 
 from .paper_trading import PaperTradingEngine

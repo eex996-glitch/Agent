@@ -2,7 +2,7 @@
 Unified Trading Interface
 
 Provides a consistent interface for both paper trading and live trading
-through Tradovate/Apex.
+through Tradovate/MFFU.
 """
 
 from abc import ABC, abstractmethod
@@ -25,7 +25,7 @@ class TradingMode(Enum):
     """Trading mode selection"""
     PAPER = "paper"  # Local simulation
     DEMO = "demo"    # Tradovate demo account
-    LIVE = "live"    # Live trading (Apex, etc.)
+    LIVE = "live"    # Live trading (MFFU, etc.)
 
 
 @dataclass
@@ -267,7 +267,7 @@ class PaperTradingInterface(TradingInterface):
 
 
 class TradovateInterface(TradingInterface):
-    """Tradovate/Apex trading implementation"""
+    """Tradovate/MFFU trading implementation"""
     
     def __init__(
         self,

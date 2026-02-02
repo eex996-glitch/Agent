@@ -2,7 +2,7 @@
 Trend Following Strategy
 
 A multi-timeframe trend following strategy designed for futures trading
-with prop firm rule compliance (Topstep).
+with prop firm rule compliance (MFFU - MyFundedFutures).
 
 Key Features:
 - EMA alignment for trend direction

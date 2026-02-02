@@ -21,25 +21,24 @@ class TradingMode(Enum):
 
 class PropFirm(Enum):
     """Supported prop trading firms"""
-    TOPSTEP = "topstep"
-    APEX = "apex"
+    MFFU = "mffu"  # MyFundedFutures
     CUSTOM = "custom"
 
 
 @dataclass
 class AccountConfig:
     """Account configuration settings"""
-    # Account tier (50K, 100K, 150K for Topstep)
+    # Account tier (50K, 100K, 150K for MFFU)
     account_size: int = 50000
-    
+
     # Starting balance for paper trading
     starting_balance: float = 50000.0
-    
+
     # Currency
     currency: str = "USD"
-    
+
     # Prop firm selection
-    prop_firm: PropFirm = PropFirm.TOPSTEP
+    prop_firm: PropFirm = PropFirm.MFFU
 
 
 @dataclass

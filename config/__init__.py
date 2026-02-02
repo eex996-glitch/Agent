@@ -20,12 +20,12 @@ from .settings import (
 )
 
 from .prop_firm_rules import (
-    TopstepRules,
-    ExpressFundedRules,
+    MFFURules,
+    MFFUFundedRules,
     AccountTier,
     ScalingLevel,
-    get_topstep_rules,
-    get_express_funded_rules
+    get_mffu_rules,
+    get_mffu_funded_rules
 )
 
 __all__ = [
@@ -43,11 +43,11 @@ __all__ = [
     "MARKETS",
     "load_settings_from_env",
     
-    # Prop Firm Rules
-    "TopstepRules",
-    "ExpressFundedRules",
+    # Prop Firm Rules (MFFU)
+    "MFFURules",
+    "MFFUFundedRules",
     "AccountTier",
     "ScalingLevel",
-    "get_topstep_rules",
-    "get_express_funded_rules"
+    "get_mffu_rules",
+    "get_mffu_funded_rules"
 ]

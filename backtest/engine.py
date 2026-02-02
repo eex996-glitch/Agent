@@ -571,7 +571,7 @@ class BacktestEngine:
         if daily_pnls:
             result.best_day = max(daily_pnls)
             result.worst_day = min(daily_pnls)
-            result.winning_days = sum(1 for p in daily_pnls if p >= 150)  # Topstep threshold
+            result.winning_days = sum(1 for p in daily_pnls if p >= 150)  # MFFU threshold
             
             # Consistency score
             if result.total_return > 0:

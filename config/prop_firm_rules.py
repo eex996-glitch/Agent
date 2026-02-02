@@ -365,12 +365,6 @@ def get_mffu_funded_rules(tier: str = "Starter") -> MFFUFundedRules:
     return MFFUFundedRules(tier=account_tier)
 
 
-# Backward compatibility aliases
-def get_topstep_rules(tier: str = "50K") -> MFFURules:
-    """Alias for get_mffu_rules for backward compatibility"""
-    return get_mffu_rules(tier)
-
-
 # Example usage and testing
 if __name__ == "__main__":
     print("=" * 60)

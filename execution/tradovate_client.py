@@ -26,7 +26,7 @@ from loguru import logger
 class TradovateEnvironment(Enum):
     """Trading environment selection"""
     DEMO = "demo"  # Paper trading
-    LIVE = "live"  # Live trading (Apex, etc.)
+    LIVE = "live"  # Live trading (MFFU, etc.)
 
 
 @dataclass
@@ -684,7 +684,7 @@ def create_demo_client(credentials: TradovateCredentials = None) -> TradovateCli
 
 
 def create_live_client(credentials: TradovateCredentials = None) -> TradovateClient:
-    """Create a client for live trading (Apex, etc.)"""
+    """Create a client for live trading (MFFU, etc.)"""
     creds = credentials or TradovateCredentials.from_env()
     return TradovateClient(creds, TradovateEnvironment.LIVE)
 
