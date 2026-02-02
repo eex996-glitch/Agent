@@ -57,3 +57,13 @@ schedule>=1.2.0
 
 # Tradovate API
 websocket-client>=1.6.0
+
+# GUI (Kali Linux compatible)
+PyQt5>=5.15.0
+PyQt5-Qt5>=5.15.0
+PyQt5-sip>=12.11.0
+
+# News Feed and Sentiment Analysis
+feedparser>=6.0.10
+textblob>=0.17.1
+nltk>=3.8.1

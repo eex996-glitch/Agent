@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """
 Futures Trading Agent - Main Entry Point
+Kali Linux Edition with GUI Support
 
 Supports:
 - Backtest: Test strategy on historical data
-- Paper: Local simulation trading  
+- Paper: Local simulation trading
 - Demo: Tradovate demo account
 - Live: Live trading via Apex/Tradovate
+- GUI: Full graphical interface with news feed and model health
 
 Usage:
-    python main.py --mode backtest --symbol MES
-    python main.py --mode paper --symbol MESZ4
-    python main.py --mode demo --symbol MESZ4
-    python main.py --mode live --symbol MESZ4
+    python main.py --gui                          # Launch GUI
+    python main.py --mode backtest --symbol MES   # CLI backtest
+    python main.py --mode paper --symbol MESZ4    # CLI paper trading
+    python main.py --mode demo --symbol MESZ4     # CLI demo trading
+    python main.py --mode live --symbol MESZ4     # CLI live trading
 """
 
 import argparse
@@ -33,7 +36,8 @@ from backtest.engine import BacktestEngine, BacktestConfig
 
 
 def setup_argparse():
-    parser = argparse.ArgumentParser(description='Futures Trading Agent')
+    parser = argparse.ArgumentParser(description='Futures Trading Agent - Kali Linux Edition')
+    parser.add_argument('--gui', '-g', action='store_true', help='Launch graphical interface')
     parser.add_argument('--mode', '-m', choices=['backtest', 'paper', 'demo', 'live'], default='backtest')
     parser.add_argument('--symbol', '-s', default='MES', help='Symbol (e.g., MES, MESZ4)')
     parser.add_argument('--start', type=str, default=None)
@@ -45,6 +49,26 @@ def setup_argparse():
     parser.add_argument('--analyze', action='store_true')
     parser.add_argument('--clear-cache', action='store_true')
     return parser
+
+
+def run_gui(args):
+    """Launch the graphical user interface"""
+    print("\n=== Launching GUI ===\n")
+    print("Starting Futures Trading Agent GUI...")
+    print("Kali Linux Dark Theme Enabled\n")
+
+    try:
+        from gui.main_window import run_gui as launch_gui
+        return launch_gui()
+    except ImportError as e:
+        print(f"Error: Could not import GUI module: {e}")
+        print("\nMake sure PyQt5 is installed:")
+        print("  sudo apt install python3-pyqt5")
+        print("  pip install PyQt5")
+        return 1
+    except Exception as e:
+        print(f"Error launching GUI: {e}")
+        return 1
 
 
 def show_config(args):
@@ -225,36 +249,42 @@ def run_live_trading(args):
 def main():
     parser = setup_argparse()
     args = parser.parse_args()
-    
+
+    # Launch GUI if requested
+    if args.gui:
+        return run_gui(args)
+
     print("\n" + "="*50)
     print("   FUTURES TRADING AGENT")
+    print("   Kali Linux Edition")
     print("   Paper | Demo | Live Trading")
     print("="*50)
-    
+    print("\n  Tip: Run with --gui for graphical interface\n")
+
     if args.show_config:
         show_config(args)
         return 0
-    
+
     if args.clear_cache:
         DataFetcher().clear_cache()
         print("Cache cleared")
         return 0
-    
+
     if args.analyze:
         analyze_market(args)
         return 0
-    
+
     mode_handlers = {
         'backtest': run_backtest,
         'paper': run_paper_trading,
         'demo': run_demo_trading,
         'live': run_live_trading
     }
-    
+
     handler = mode_handlers.get(args.mode)
     if handler:
         handler(args)
-    
+
     return 0
 
 
