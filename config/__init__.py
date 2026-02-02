@@ -20,7 +20,7 @@ from .settings import (
 )
 
 from .prop_firm_rules import (
-    TopstepRules,
+    MFFURules,
     ExpressFundedRules,
     AccountTier,
     ScalingLevel,
@@ -44,7 +44,7 @@ __all__ = [
     "load_settings_from_env",
     
     # Prop Firm Rules
-    "TopstepRules",
+    "MFFURules",
     "ExpressFundedRules",
     "AccountTier",
     "ScalingLevel",
