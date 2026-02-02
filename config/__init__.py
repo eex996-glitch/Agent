@@ -24,8 +24,8 @@ from .prop_firm_rules import (
     ExpressFundedRules,
     AccountTier,
     ScalingLevel,
-    get_topstep_rules,
-    get_express_funded_rules
+    get_mffu_rules,
+    get_mffu_funded_rules
 )
 
 __all__ = [
@@ -48,6 +48,6 @@ __all__ = [
     "ExpressFundedRules",
     "AccountTier",
     "ScalingLevel",
-    "get_topstep_rules",
-    "get_express_funded_rules"
+    "get_mffu_rules",
+    "get_mffu_funded_rules"
 ]

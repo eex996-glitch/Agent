@@ -2,7 +2,7 @@
 Live Trading Runner
 
 Connects the trading strategy to the execution interface for
-paper trading or live trading via Tradovate/Apex.
+paper trading or live trading via Tradovate/MFFU.
 """
 
 import os
@@ -18,7 +18,7 @@ from loguru import logger
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.settings import get_market_config
-from config.prop_firm_rules import create_topstep_rules
+from config.prop_firm_rules import get_mffu_rules
 from data.fetcher import DataFetcher
 from strategy.trend_following import TrendFollowingStrategy
 from strategy.indicators import add_all_indicators
@@ -60,7 +60,7 @@ class LiveTrader:
         
         # Create strategy and risk manager
         self.strategy = TrendFollowingStrategy()
-        prop_rules = create_topstep_rules(prop_firm_tier)
+        prop_rules = get_mffu_rules(prop_firm_tier)
         self.risk_manager = RiskManager(account_size, prop_rules)
         
         # Market config

@@ -287,7 +287,7 @@ class MainWindow(QMainWindow):
             "<li>Backtest, Paper, Demo, Live trading</li>"
             "<li>Real-time news sentiment analysis</li>"
             "<li>Model health monitoring</li>"
-            "<li>Tradovate/Apex integration</li>"
+            "<li>Tradovate/MFFU integration</li>"
             "</ul>"
             "<p>⚠️ Trading involves risk. Use responsibly.</p>"
         )

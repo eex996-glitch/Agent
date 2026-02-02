@@ -7,7 +7,7 @@ Supports:
 - Backtest: Test strategy on historical data
 - Paper: Local simulation trading
 - Demo: Tradovate demo account
-- Live: Live trading via Apex/Tradovate
+- Live: Live trading via Tradovate/MFFU
 - GUI: Full graphical interface with news feed and model health
 
 Usage:
@@ -28,7 +28,7 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from config.settings import MARKETS
-from config.prop_firm_rules import MFFURules
+from config.prop_firm_rules import MFFURules, get_mffu_rules
 from data.fetcher import DataFetcher
 from strategy.trend_following import TrendFollowingStrategy
 from strategy.indicators import Indicators
@@ -80,12 +80,12 @@ def show_config(args):
     rules = MFFURules(f"{args.account_size//1000}K")
     print(f"Profit Target: ${rules.profit_target:,.0f}")
     print(f"Max Loss: ${rules.max_loss_limit:,.0f}")
-    
+
     print("\n--- Trading Modes ---")
     print("  backtest - Historical testing")
     print("  paper    - Local simulation")
     print("  demo     - Tradovate demo API")
-    print("  live     - Apex/Tradovate live")
+    print("  live     - MFFU/Tradovate live")
     
     print("\n--- Markets ---")
     for sym, mkt in MARKETS.items():
