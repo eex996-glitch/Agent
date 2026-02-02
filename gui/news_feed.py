@@ -7,7 +7,7 @@ Pulls financial news and analyzes sentiment to influence trading decisions
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QScrollArea, QGroupBox, QPushButton, QComboBox,
-    QProgressBar, QTextEdit
+    QProgressBar, QTextEdit, QGridLayout
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont
@@ -18,10 +18,11 @@ import random
 class NewsItem(QFrame):
     """Individual news item display"""
 
-    def __init__(self, headline, source, time, sentiment, impact):
+    def __init__(self, headline, source, time, sentiment, impact, score):
         super().__init__()
         self.sentiment = sentiment
         self.impact = impact
+        self.score = score
         self.setup_ui(headline, source, time)
 
     def setup_ui(self, headline, source, time):
@@ -38,7 +39,7 @@ class NewsItem(QFrame):
                 background-color: #16213e;
                 border-left: 4px solid {border_color};
                 border-radius: 4px;
-                padding: 10px;
+                padding: 12px;
                 margin: 5px;
             }}
             QFrame:hover {{
@@ -47,9 +48,9 @@ class NewsItem(QFrame):
         """)
 
         layout = QVBoxLayout(self)
-        layout.setSpacing(5)
+        layout.setSpacing(8)
 
-        # Header with sentiment badge
+        # Header with sentiment badge and impact
         header_layout = QHBoxLayout()
 
         # Sentiment badge
@@ -58,17 +59,23 @@ class NewsItem(QFrame):
         badge.setStyleSheet(f"""
             background-color: {border_color};
             color: {'#000' if self.sentiment == 'bullish' else '#fff'};
-            padding: 2px 8px;
+            padding: 3px 10px;
             border-radius: 4px;
-            font-size: 10px;
+            font-size: 11px;
             font-weight: bold;
         """)
         header_layout.addWidget(badge)
 
+        # Score indicator
+        score_label = QLabel(f"Score: {self.score:+.2f}")
+        score_color = "#00ff41" if self.score > 0 else "#ff4444" if self.score < 0 else "#888"
+        score_label.setStyleSheet(f"color: {score_color}; font-size: 11px; font-weight: bold;")
+        header_layout.addWidget(score_label)
+
         # Impact indicator
         impact_colors = {'high': '#ff4444', 'medium': '#ffcc00', 'low': '#888888'}
-        impact_label = QLabel(f"⚡ {self.impact.upper()}")
-        impact_label.setStyleSheet(f"color: {impact_colors.get(self.impact, '#888')};")
+        impact_label = QLabel(f"Impact: {self.impact.upper()}")
+        impact_label.setStyleSheet(f"color: {impact_colors.get(self.impact, '#888')}; font-size: 11px;")
         header_layout.addWidget(impact_label)
 
         header_layout.addStretch()
@@ -83,7 +90,7 @@ class NewsItem(QFrame):
         # Headline
         headline_label = QLabel(headline)
         headline_label.setWordWrap(True)
-        headline_label.setStyleSheet("color: #eee; font-size: 13px;")
+        headline_label.setStyleSheet("color: #eee; font-size: 13px; line-height: 1.4;")
         layout.addWidget(headline_label)
 
         # Source
@@ -113,7 +120,7 @@ class SentimentGauge(QFrame):
         layout = QVBoxLayout(self)
 
         title = QLabel("MARKET SENTIMENT")
-        title.setStyleSheet("color: #888; font-size: 12px;")
+        title.setStyleSheet("color: #888; font-size: 12px; font-weight: bold;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
@@ -124,7 +131,9 @@ class SentimentGauge(QFrame):
 
         # Sentiment bar
         bar_layout = QHBoxLayout()
-        bar_layout.addWidget(QLabel("🐻"))
+        bear_label = QLabel("BEARISH")
+        bear_label.setStyleSheet("color: #ff4444; font-size: 10px;")
+        bar_layout.addWidget(bear_label)
 
         self.sentiment_bar = QProgressBar()
         self.sentiment_bar.setRange(0, 100)
@@ -144,11 +153,13 @@ class SentimentGauge(QFrame):
         """)
         bar_layout.addWidget(self.sentiment_bar)
 
-        bar_layout.addWidget(QLabel("🐂"))
+        bull_label = QLabel("BULLISH")
+        bull_label.setStyleSheet("color: #00ff41; font-size: 10px;")
+        bar_layout.addWidget(bull_label)
         layout.addLayout(bar_layout)
 
         self.score_label = QLabel("Score: 0.00")
-        self.score_label.setStyleSheet("color: #666; font-size: 11px;")
+        self.score_label.setStyleSheet("color: #888; font-size: 12px;")
         self.score_label.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.score_label)
 
@@ -171,11 +182,11 @@ class SentimentGauge(QFrame):
             self.sentiment_label.setText("NEUTRAL")
             self.sentiment_label.setStyleSheet("color: #ffcc00; font-size: 24px; font-weight: bold;")
 
-        self.score_label.setText(f"Score: {self.sentiment_score:.2f}")
+        self.score_label.setText(f"Score: {self.sentiment_score:+.2f}")
 
 
-class TradingImpactWidget(QFrame):
-    """Shows how news sentiment affects trading"""
+class TradingRecommendationWidget(QFrame):
+    """Shows trading recommendations based on sentiment and model abilities"""
 
     def __init__(self):
         super().__init__()
@@ -193,61 +204,183 @@ class TradingImpactWidget(QFrame):
 
         layout = QVBoxLayout(self)
 
-        title = QLabel("TRADING IMPACT")
-        title.setStyleSheet("color: #888; font-size: 12px;")
+        title = QLabel("TRADING RECOMMENDATION")
+        title.setStyleSheet("color: #00ccff; font-size: 12px; font-weight: bold;")
         layout.addWidget(title)
 
-        self.impact_text = QTextEdit()
-        self.impact_text.setReadOnly(True)
-        self.impact_text.setStyleSheet("""
-            background-color: #0f0f1a;
-            border: 1px solid #3a3a5e;
-            color: #00ff41;
-            font-family: 'Hack', monospace;
+        # Recommendation display
+        self.recommendation_label = QLabel("HOLD")
+        self.recommendation_label.setStyleSheet("color: #ffcc00; font-size: 28px; font-weight: bold;")
+        self.recommendation_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.recommendation_label)
+
+        self.confidence_label = QLabel("Confidence: --")
+        self.confidence_label.setStyleSheet("color: #888; font-size: 12px;")
+        self.confidence_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.confidence_label)
+
+        # Reasoning section
+        reason_label = QLabel("Reasoning:")
+        reason_label.setStyleSheet("color: #888; font-size: 11px; margin-top: 10px;")
+        layout.addWidget(reason_label)
+
+        self.reason_text = QTextEdit()
+        self.reason_text.setReadOnly(True)
+        self.reason_text.setMaximumHeight(80)
+        self.reason_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #0f0f1a;
+                border: 1px solid #3a3a5e;
+                color: #aaa;
+                font-family: 'Hack', monospace;
+                font-size: 11px;
+            }
         """)
-        self.impact_text.setMaximumHeight(150)
-        layout.addWidget(self.impact_text)
+        layout.addWidget(self.reason_text)
 
-        self.update_impact(0, [])
+    def update_recommendation(self, sentiment_score, high_impact_news):
+        """Update recommendation based on analysis"""
+        reasons = []
+        confidence = 50
 
-    def update_impact(self, sentiment_score, recent_news):
-        """Update the trading impact based on sentiment"""
-        text = []
-        text.append(f"[{datetime.now().strftime('%H:%M:%S')}] Sentiment Analysis Update")
-        text.append("-" * 40)
-
-        if sentiment_score > 0.5:
-            text.append("⚡ STRONG BULLISH SIGNAL")
-            text.append("• Increasing position size by 20%")
-            text.append("• Tightening stops on shorts")
-            text.append("• Favoring long entries")
+        # Determine recommendation
+        if high_impact_news:
+            recommendation = "WAIT"
+            color = "#ffcc00"
+            reasons.append("High impact news detected - volatility expected")
+            reasons.append("Recommend waiting for market to settle")
+            confidence = 80
+        elif sentiment_score > 0.5:
+            recommendation = "FAVOR LONGS"
+            color = "#00ff41"
+            reasons.append(f"Strong bullish sentiment ({sentiment_score:+.2f})")
+            reasons.append("Strategy: Look for long entry setups")
+            reasons.append("Consider increasing position size by 20%")
+            confidence = 75
         elif sentiment_score > 0.2:
-            text.append("📈 MODERATE BULLISH BIAS")
-            text.append("• Normal position sizing")
-            text.append("• Slight preference for longs")
+            recommendation = "SLIGHT BULLISH"
+            color = "#00ff41"
+            reasons.append(f"Moderate bullish sentiment ({sentiment_score:+.2f})")
+            reasons.append("Strategy: Normal trading with long bias")
+            confidence = 60
         elif sentiment_score < -0.5:
-            text.append("⚡ STRONG BEARISH SIGNAL")
-            text.append("• Reducing position size by 20%")
-            text.append("• Tightening stops on longs")
-            text.append("• Favoring short entries")
+            recommendation = "FAVOR SHORTS"
+            color = "#ff4444"
+            reasons.append(f"Strong bearish sentiment ({sentiment_score:+.2f})")
+            reasons.append("Strategy: Look for short entry setups")
+            reasons.append("Consider tightening stops on longs")
+            confidence = 75
         elif sentiment_score < -0.2:
-            text.append("📉 MODERATE BEARISH BIAS")
-            text.append("• Cautious position sizing")
-            text.append("• Slight preference for shorts")
+            recommendation = "SLIGHT BEARISH"
+            color = "#ff4444"
+            reasons.append(f"Moderate bearish sentiment ({sentiment_score:+.2f})")
+            reasons.append("Strategy: Normal trading with short bias")
+            confidence = 60
         else:
-            text.append("➖ NEUTRAL CONDITIONS")
-            text.append("• Standard position sizing")
-            text.append("• Following technical signals")
+            recommendation = "NEUTRAL"
+            color = "#ffcc00"
+            reasons.append("Mixed/neutral sentiment detected")
+            reasons.append("Strategy: Follow technical signals only")
+            reasons.append("No directional bias recommended")
+            confidence = 50
 
-        # High impact news override
-        high_impact = [n for n in recent_news if n.get('impact') == 'high']
-        if high_impact:
-            text.append("")
-            text.append("⚠️ HIGH IMPACT NEWS DETECTED")
-            text.append("• Pausing new entries for 5 min")
-            text.append("• Widening stops by 50%")
+        self.recommendation_label.setText(recommendation)
+        self.recommendation_label.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
+        self.confidence_label.setText(f"Confidence: {confidence}%")
+        self.reason_text.setText("\n".join(f"• {r}" for r in reasons))
 
-        self.impact_text.setText("\n".join(text))
+
+class SentimentFactorsWidget(QFrame):
+    """Shows what factors are affecting sentiment"""
+
+    def __init__(self):
+        super().__init__()
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #16213e;
+                border: 1px solid #3a3a5e;
+                border-radius: 8px;
+                padding: 15px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+
+        title = QLabel("SENTIMENT FACTORS")
+        title.setStyleSheet("color: #ffcc00; font-size: 12px; font-weight: bold;")
+        layout.addWidget(title)
+
+        # Factor grid
+        self.factors_layout = QGridLayout()
+        layout.addLayout(self.factors_layout)
+
+        # Initialize factor labels
+        self.factor_labels = {}
+        factors = [
+            ("Fed Policy", 0, 0),
+            ("Earnings", 0, 1),
+            ("Economic Data", 1, 0),
+            ("Geopolitical", 1, 1),
+            ("Technical", 2, 0),
+            ("Volume/Flow", 2, 1),
+        ]
+
+        for name, row, col in factors:
+            frame = QFrame()
+            frame.setStyleSheet("""
+                QFrame {
+                    background-color: #0f0f1a;
+                    border: 1px solid #3a3a5e;
+                    border-radius: 4px;
+                    padding: 5px;
+                }
+            """)
+            f_layout = QVBoxLayout(frame)
+            f_layout.setSpacing(2)
+            f_layout.setContentsMargins(5, 5, 5, 5)
+
+            name_label = QLabel(name)
+            name_label.setStyleSheet("color: #888; font-size: 10px;")
+            f_layout.addWidget(name_label)
+
+            value_label = QLabel("--")
+            value_label.setStyleSheet("color: #ffcc00; font-size: 12px; font-weight: bold;")
+            f_layout.addWidget(value_label)
+
+            self.factor_labels[name] = value_label
+            self.factors_layout.addWidget(frame, row, col)
+
+    def update_factors(self, news_items):
+        """Update factors based on news analysis"""
+        # Simulate factor analysis (in real app, would analyze actual news)
+        factors = {
+            "Fed Policy": random.choice(["Bullish", "Bearish", "Neutral"]),
+            "Earnings": random.choice(["Bullish", "Bearish", "Neutral"]),
+            "Economic Data": random.choice(["Bullish", "Bearish", "Neutral"]),
+            "Geopolitical": random.choice(["Risk-On", "Risk-Off", "Neutral"]),
+            "Technical": random.choice(["Bullish", "Bearish", "Neutral"]),
+            "Volume/Flow": random.choice(["Buying", "Selling", "Mixed"]),
+        }
+
+        colors = {
+            "Bullish": "#00ff41",
+            "Bearish": "#ff4444",
+            "Neutral": "#ffcc00",
+            "Risk-On": "#00ff41",
+            "Risk-Off": "#ff4444",
+            "Buying": "#00ff41",
+            "Selling": "#ff4444",
+            "Mixed": "#ffcc00",
+        }
+
+        for name, value in factors.items():
+            if name in self.factor_labels:
+                self.factor_labels[name].setText(value)
+                color = colors.get(value, "#888")
+                self.factor_labels[name].setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold;")
 
 
 class NewsFeedWidget(QWidget):
@@ -274,7 +407,7 @@ class NewsFeedWidget(QWidget):
 
         # Header
         header_layout = QHBoxLayout()
-        header_label = QLabel("📰 FINANCIAL NEWS FEED")
+        header_label = QLabel("FINANCIAL NEWS FEED")
         header_label.setStyleSheet("color: #00ff41; font-size: 16px; font-weight: bold;")
         header_layout.addWidget(header_label)
 
@@ -288,7 +421,7 @@ class NewsFeedWidget(QWidget):
         header_layout.addWidget(self.filter_combo)
 
         # Refresh button
-        refresh_btn = QPushButton("🔄 Refresh")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.fetch_news)
         header_layout.addWidget(refresh_btn)
 
@@ -318,8 +451,11 @@ class NewsFeedWidget(QWidget):
         self.sentiment_gauge = SentimentGauge()
         right_panel.addWidget(self.sentiment_gauge)
 
-        self.impact_widget = TradingImpactWidget()
-        right_panel.addWidget(self.impact_widget)
+        self.recommendation_widget = TradingRecommendationWidget()
+        right_panel.addWidget(self.recommendation_widget)
+
+        self.factors_widget = SentimentFactorsWidget()
+        right_panel.addWidget(self.factors_widget)
 
         # News sources status
         sources_group = QGroupBox("News Sources")
@@ -367,49 +503,49 @@ class NewsFeedWidget(QWidget):
         # For demo, generate sample news
         sample_news = [
             {
-                "headline": "Fed signals potential rate pause amid cooling inflation data",
+                "headline": "Fed signals potential rate pause amid cooling inflation data, markets respond positively",
                 "source": "Reuters",
                 "sentiment": "bullish",
                 "impact": "high",
                 "score": 0.7
             },
             {
-                "headline": "S&P 500 futures rise as tech earnings exceed expectations",
+                "headline": "S&P 500 futures rise as tech earnings exceed Wall Street expectations",
                 "source": "Bloomberg",
                 "sentiment": "bullish",
                 "impact": "medium",
                 "score": 0.5
             },
             {
-                "headline": "Oil prices surge on Middle East supply concerns",
+                "headline": "Oil prices surge on Middle East supply concerns, energy sector leads gains",
                 "source": "CNBC",
                 "sentiment": "neutral",
                 "impact": "medium",
                 "score": 0.1
             },
             {
-                "headline": "Treasury yields climb on strong jobs data",
+                "headline": "Treasury yields climb on stronger than expected jobs data, rate cut odds decline",
                 "source": "MarketWatch",
                 "sentiment": "bearish",
                 "impact": "medium",
                 "score": -0.3
             },
             {
-                "headline": "China economic data shows manufacturing contraction",
+                "headline": "China economic data shows manufacturing contraction, global growth concerns rise",
                 "source": "Reuters",
                 "sentiment": "bearish",
                 "impact": "high",
                 "score": -0.6
             },
             {
-                "headline": "Nvidia announces new AI chip, stock jumps premarket",
+                "headline": "Nvidia announces breakthrough AI chip architecture, stock jumps in premarket trading",
                 "source": "Bloomberg",
                 "sentiment": "bullish",
                 "impact": "low",
                 "score": 0.4
             },
             {
-                "headline": "European markets mixed ahead of ECB decision",
+                "headline": "European markets trade mixed ahead of key ECB policy decision tomorrow",
                 "source": "CNBC",
                 "sentiment": "neutral",
                 "impact": "low",
@@ -440,7 +576,8 @@ class NewsFeedWidget(QWidget):
                 source=news["source"],
                 time=time_str,
                 sentiment=news["sentiment"],
-                impact=news["impact"]
+                impact=news["impact"],
+                score=news["score"]
             )
             self.news_layout.addWidget(news_widget)
 
@@ -462,13 +599,29 @@ class NewsFeedWidget(QWidget):
             self.sentiment_score = weighted_score / total_weight if total_weight > 0 else 0.0
 
         self.sentiment_gauge.set_sentiment(self.sentiment_score)
-        self.impact_widget.update_impact(self.sentiment_score, self.news_items)
+
+        # Check for high impact news
+        high_impact = [n for n in self.news_items if n.get('impact') == 'high']
+        self.recommendation_widget.update_recommendation(self.sentiment_score, len(high_impact) > 0)
+        self.factors_widget.update_factors(self.news_items)
+
         self.sentiment_updated.emit(self.sentiment_score)
 
     def apply_filter(self, filter_text):
         """Apply filter to news display"""
-        # This would filter the displayed news
-        pass
+        filter_lower = filter_text.lower()
+
+        for i in range(self.news_layout.count()):
+            widget = self.news_layout.itemAt(i).widget()
+            if widget and hasattr(widget, 'sentiment'):
+                if filter_lower == "all news":
+                    widget.show()
+                elif filter_lower == "high impact":
+                    widget.setVisible(widget.impact == "high")
+                elif filter_lower == "bullish only":
+                    widget.setVisible(widget.sentiment == "bullish")
+                elif filter_lower == "bearish only":
+                    widget.setVisible(widget.sentiment == "bearish")
 
     def update_feed(self):
         """Called periodically to update the feed"""
