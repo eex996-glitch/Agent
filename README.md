@@ -1,18 +1,16 @@
-# Futures Trading Agent (Kali Linux Edition)
+# MFFU Futures Trading Agent
 
-Automated futures trading system for MyFundedFutures (MFFU) prop firm evaluations.
+Automated futures trading system built for **MyFundedFutures (MFFU)** prop firm evaluations and funded accounts. Features a PyQt5 GUI with Kali Linux dark theme, multi-strategy tournament system, and full MFFU rule compliance.
 
-## Features
+## Core Features
 
-- **GUI Interface**: Full graphical interface with Kali-style dark theme
-- **News Feed**: Real-time financial news with sentiment analysis
-- **Model Health**: Live confidence metrics and profit visualization
-- **Backtest**: Test strategies on historical data
-- **Paper Trading**: Local simulation (no API needed)
-- **Demo Trading**: Tradovate demo account via API
-- **Live Trading**: MyFundedFutures via Tradovate API
-- **Sentiment-Based Trading**: News sentiment automatically adjusts trading parameters
-- **MFFU Rules**: Built-in EOD trailing drawdown, scaling plans, no consistency rule
+- **Multi-Strategy Engine**: 4 strategy types (Trend Following, Mean Reversion, Breakout, Adaptive) with 6+ variants
+- **Strategy Tournament**: Automated backtesting of all strategies on identical data to select the best performer
+- **MFFU Rule Compliance**: EOD trailing drawdown, scaling plans, no daily loss limit, no consistency rule
+- **Model Health Dashboard**: Real backtest-driven confidence metrics (no simulated/random data)
+- **GUI Interface**: Full PyQt5 interface with Kali-style dark theme
+- **Risk Management**: Position sizing, drawdown monitoring, scaling plan enforcement
+- **Backtest Engine**: Tournament-powered backtesting with detailed trade analysis
 
 ## Quick Start (Kali Linux)
 
@@ -28,112 +26,114 @@ source venv/bin/activate
 # 3. Install packages
 pip install -r requirements.txt
 
-# 4. Launch GUI (recommended)
+# 4. Launch GUI
 python main.py --gui
 
 # 5. Or run CLI backtest
-python main.py --mode backtest --symbol MES
-
-# 6. Or run CLI paper trading
-python main.py --mode paper --symbol MESZ4
-```
-
-## GUI Interface
-
-Launch the full graphical interface with:
-```bash
-python main.py --gui
-```
-
-### GUI Features
-- **Dashboard**: Real-time trading display with position tracking
-- **News Feed**: Live financial news with sentiment analysis
-- **Model Health**: Confidence gauges and equity curve visualization
-- **Dark Theme**: Kali-style green-on-black interface
-
-### Screenshots
-The GUI includes:
-- Trading controls (start/stop, symbol selection, risk settings)
-- Live P&L and drawdown tracking
-- News sentiment gauge (-1 to +1 scale)
-- Component confidence bars (trend, signal, risk, sentiment)
-- Equity curve chart with profit highlighting
-
-## Trading Modes
-
-### Backtest
-Test your strategy on historical data:
-```bash
 python main.py --mode backtest --symbol MES --account-size 50000
 ```
 
-### Paper Trading (Local)
-Simulate trading without any API connection:
-```bash
-python main.py --mode paper --symbol MESZ4 --interval 60
-```
+## Trading Strategies
 
-### Demo Trading (Tradovate API)
-Trade on Tradovate's demo account:
-```bash
-# Set credentials first
-export TRADOVATE_USERNAME='your_username'
-export TRADOVATE_PASSWORD='your_password'
-export TRADOVATE_CID='your_client_id'
-export TRADOVATE_SEC='your_secret_key'
+### Trend Following
+- EMA alignment (9/21/50/200) for trend direction
+- ADX trend strength filter (configurable threshold)
+- RSI momentum confirmation
+- ATR-based dynamic stops and targets
+- Aggressive variant with tighter stops and wider targets
 
-python main.py --mode demo --symbol MESZ4
-```
+### Mean Reversion
+- Bollinger Bands %B for overbought/oversold detection
+- RSI, Stochastic K/D crossovers, Williams %R confirmation
+- Multi-indicator scoring system (0-100, threshold 60)
+- Optional reversal candle requirement
+- Relaxed variant with wider entry zones
 
-### Live Trading (MyFundedFutures/Tradovate)
-Trade real money on your MFFU funded account:
-```bash
-# Set credentials
-export TRADOVATE_USERNAME='your_mffu_username'
-export TRADOVATE_PASSWORD='your_mffu_password'
-export TRADOVATE_CID='your_client_id'
-export TRADOVATE_SEC='your_secret_key'
+### Breakout
+- Donchian Channel breakout detection
+- Volume confirmation (configurable threshold)
+- Bollinger/Keltner squeeze detection
+- Inside bar breakout patterns
+- Failed breakout exit logic (within 3 bars)
+- Turtle Trading exit channel
 
-# Requires confirmation
-python main.py --mode live --symbol MESZ4
-```
+### Adaptive Multi-Pattern
+- Market regime detection (trending up/down, ranging, breakout, volatile)
+- Candlestick pattern recognition (engulfing, pin bars, inside bars, doji)
+- MACD divergence detection
+- Connors RSI(2) for mean reversion
+- Supertrend confirmation
+- Ensemble scoring with regime-specific weights
 
-## Getting Started with MyFundedFutures
+## Strategy Tournament
 
-### Step 1: Sign Up for MFFU Evaluation
-1. **Visit**: https://myfundedfutures.com
-2. **Choose Account**: Starter ($50K), Standard ($100K), or Premium ($150K)
-3. **Pay Evaluation Fee**: $150-$350/month depending on tier
+The tournament system backtests all 6 strategy variants on identical synthetic data:
 
-### Step 2: Get Tradovate API Access
-1. **Create Tradovate Account**: https://www.tradovate.com
-2. **Enable API**: Settings > API Access
-3. **Generate Keys**: Click "Generate API Key"
-4. **Save Credentials**: Store CID (Client ID) and SEC (Secret Key)
+1. **TrendFollowing** - Standard trend following
+2. **TrendFollowing_Aggressive** - Lower ADX threshold, tighter stops
+3. **MeanReversion** - Standard mean reversion with reversal candle
+4. **MeanReversion_Relaxed** - Wider entry zones, no reversal candle required
+5. **Breakout** - Donchian channel breakouts with volume confirmation
+6. **Adaptive** - Multi-pattern regime-aware strategy
 
-### Step 3: Connect MFFU to Tradovate
-- MFFU accounts connect through Tradovate platform
-- Use your MFFU credentials when prompted
-- Same API endpoints work for evaluation and funded accounts
+### Scoring System
+| Metric | Weight |
+|--------|--------|
+| Sharpe Ratio | 25% |
+| Profit Factor | 20% |
+| Win Rate | 15% |
+| Total Return | 15% |
+| Max Drawdown (penalty) | 15% |
+| Consistency | 10% |
+
+Results are saved to `logs/tournament_results.json` and drive the Model Health dashboard.
+
+## GUI Interface
+
+Launch with `python main.py --gui`
+
+### Dashboard
+- Real-time price display for selected MFFU contract
+- Account balance, P&L, drawdown, and win rate cards
+- Trading controls (start/stop, symbol selection, risk settings)
+- Signal assessment logging with pattern detection
+- Trade history table
+
+### Model Health
+- Overall confidence gauge from tournament backtest data
+- Component confidence bars (Trend Detection, Signal Quality, Risk Assessment, Consistency)
+- Best strategy performance summary
+- Strategy rankings table with composite scores
+- Equity curve visualization
+- System health status indicators
+
+### News Feed
+- Financial news display with sentiment analysis
+- Impact-weighted sentiment scoring
+- Trading recommendations based on sentiment
+- Sentiment factors breakdown
+
+### Logs
+- Trading session history
+- Performance metrics display
 
 ## MyFundedFutures (MFFU) Rules
 
 ### Account Tiers
-| Tier | Size | Profit Target | Max Loss (EOD) | Max Contracts | Monthly Fee |
-|------|------|---------------|----------------|---------------|-------------|
-| Starter | $50K | $3,000 | $2,000 | 5 | $150 |
-| Standard | $100K | $6,000 | $3,500 | 10 | $250 |
-| Premium | $150K | $9,000 | $5,000 | 15 | $350 |
+| Tier | Size | Profit Target | Max Loss (EOD) | Max Contracts |
+|------|------|---------------|----------------|---------------|
+| Starter | $50K | $3,000 | $2,000 | 5 |
+| Standard | $100K | $6,000 | $3,500 | 10 |
+| Premium | $150K | $9,000 | $5,000 | 15 |
 
-### Key MFFU Advantages
-- **NO Daily Loss Limit** - Trade without daily caps
-- **NO Consistency Rule** - No restrictions on profit distribution
-- **EOD Trailing Drawdown** - More forgiving than real-time trailing
-- **No Time Limit** - Take as long as needed to pass
-- **80/20 Profit Split** - Upgradeable to 90/10
-- **Weekly Payouts** - Request payouts weekly after funded
+### Key MFFU Advantages (Enforced in Code)
+- **NO Daily Loss Limit** - `use_daily_loss_limit=False` in risk manager
+- **NO Consistency Rule** - `has_consistency_rule=False` in prop firm config
+- **EOD Trailing Drawdown** - Drawdown only trails at end of day, not intraday
+- **No Time Limit** - No minimum trading days requirement
+- **Scaling Plan** - Position sizes increase with profit milestones
 
-### Scaling Plan (Starter $50K Example)
+### Scaling Plan (Starter $50K)
 | Profit Level | Max Contracts |
 |--------------|---------------|
 | $0 - $999 | 2 |
@@ -141,16 +141,96 @@ python main.py --mode live --symbol MESZ4
 | $1,500 - $1,999 | 4 |
 | $2,000+ | 5 |
 
-### Environment Variables
-```bash
-# Required for demo/live trading
-export TRADOVATE_USERNAME='username'
-export TRADOVATE_PASSWORD='password'
-export TRADOVATE_CID='client_id'
-export TRADOVATE_SEC='secret_key'
+### Available Instruments (2026 Contracts)
+The system supports 36 MFFU-available futures contracts across:
+- **Equity Index**: ES, MES, NQ, MNQ, RTY, M2K, YM, MYM (Mar/Jun 2026)
+- **Energy**: CL, MCL, NG (Mar/Jun 2026)
+- **Metals**: GC, MGC, SI (Mar 2026)
+- **Treasuries**: ZN, ZB, ZF, ZT (Mar 2026)
+- **Currency**: 6E, M6E (Mar 2026)
+- **Agriculture**: ZC, ZS, ZW (Mar 2026)
 
-# Optional
-export TRADOVATE_DEVICE_ID='device_id'
+## Trading Modes
+
+### Backtest (Tournament)
+Test all strategies on synthetic data with MFFU rules:
+```bash
+python main.py --mode backtest --symbol MES --account-size 50000
+```
+
+### Paper Trading (Local)
+Simulate trading without API connection:
+```bash
+python main.py --mode paper --symbol MESH6 --interval 60
+```
+
+### Demo Trading (Tradovate API)
+Trade on Tradovate demo:
+```bash
+export TRADOVATE_USERNAME='your_username'
+export TRADOVATE_PASSWORD='your_password'
+export TRADOVATE_CID='your_client_id'
+export TRADOVATE_SEC='your_secret_key'
+
+python main.py --mode demo --symbol MESH6
+```
+
+### Live Trading (MFFU via Tradovate)
+Trade on your MFFU funded account:
+```bash
+python main.py --mode live --symbol MESH6
+```
+
+## Project Structure
+
+```
+Agent/
+├── main.py                          # Entry point (CLI + GUI)
+├── requirements.txt                 # Dependencies
+├── config/
+│   ├── settings.py                  # Configuration
+│   └── prop_firm_rules.py           # MFFU evaluation & funded rules
+├── strategy/
+│   ├── base.py                      # Base strategy class
+│   ├── indicators.py                # Technical indicators library
+│   ├── trend_following.py           # EMA/ADX trend strategy
+│   ├── mean_reversion.py            # Bollinger/RSI reversion strategy
+│   ├── breakout.py                  # Donchian/volume breakout strategy
+│   ├── adaptive.py                  # Multi-pattern regime-aware strategy
+│   └── tournament.py                # Strategy tournament & data generator
+├── risk/
+│   └── manager.py                   # Risk management (MFFU-compliant)
+├── backtest/
+│   └── engine.py                    # Backtesting engine
+├── execution/
+│   ├── paper_trading.py             # Paper trading engine
+│   ├── tradovate_client.py          # Tradovate API client
+│   ├── trading_interface.py         # Unified trading interface
+│   └── live_trader.py               # Live trading runner
+├── gui/
+│   ├── main_window.py               # Main window + backtest dialog
+│   ├── dashboard.py                 # Trading dashboard
+│   ├── news_feed.py                 # News feed + sentiment
+│   ├── model_health.py              # Tournament-driven health display
+│   └── logs_widget.py               # Logs display
+├── news/
+│   ├── fetcher.py                   # Multi-source news fetcher
+│   └── sentiment.py                 # Sentiment analysis
+├── logs/
+│   ├── tracker.py                   # Trade and session tracking
+│   ├── metrics.py                   # Performance metrics
+│   ├── storage.py                   # Log persistence
+│   ├── github_sync.py               # GitHub sync functionality
+│   └── tournament_results.json      # Cached tournament results
+├── data/
+│   └── fetcher.py                   # Market data fetcher
+├── utils/
+│   ├── errors.py                    # Error handling
+│   └── logger.py                    # Logging configuration
+└── tests/
+    ├── conftest.py                  # Test configuration
+    ├── test_prop_firm_rules.py      # MFFU rules tests
+    └── test_error_handling.py       # Error handling tests
 ```
 
 ## Command Line Options
@@ -158,7 +238,7 @@ export TRADOVATE_DEVICE_ID='device_id'
 ```
 --gui, -g         Launch graphical interface
 --mode, -m        Trading mode: backtest, paper, demo, live
---symbol, -s      Contract symbol (e.g., MES, MESZ4, ESH5)
+--symbol, -s      Contract symbol (e.g., MES, MESH6, ESH6)
 --account-size    Account size: 50000, 100000, 150000
 --risk-per-trade  Risk per trade (0.01 = 1%)
 --interval, -i    Update interval in seconds (default: 60)
@@ -166,140 +246,18 @@ export TRADOVATE_DEVICE_ID='device_id'
 --show-config     Show current configuration
 ```
 
-## News Feed & Sentiment Analysis
-
-The system pulls news from multiple sources and analyzes sentiment to adjust trading:
-
-### News Sources (configure via environment variables)
-```bash
-export NEWSAPI_KEY='your_key'        # newsapi.org
-export ALPHAVANTAGE_KEY='your_key'   # Alpha Vantage
-export FINNHUB_KEY='your_key'        # Finnhub
-```
-
-### Sentiment Impact on Trading
-| Sentiment Score | Position Size | Direction Bias |
-|----------------|---------------|----------------|
-| > 0.5 (Strong Bullish) | +20% | Favor longs |
-| > 0.2 (Bullish) | Normal | Slight long bias |
-| -0.2 to 0.2 (Neutral) | Normal | No bias |
-| < -0.2 (Bearish) | Normal | Slight short bias |
-| < -0.5 (Strong Bearish) | -20% | Favor shorts |
-
-### High-Impact News Handling
-- Automatically pauses new entries for 5 minutes
-- Widens stop losses by 50%
-- Detected keywords: Fed, FOMC, CPI, Jobs Report, GDP
-
-## Performance Logging & GitHub Sync
-
-The system tracks all trading activity and syncs results to GitHub.
-
-### Features
-- **Session Logging**: Every trading session is recorded with full trade history
-- **Performance Metrics**: Win rate, profit factor, Sharpe ratio, drawdown, and more
-- **GitHub Sync**: Automatically push results to your GitHub repository
-- **CSV Export**: Export trades for external analysis
-
-### Logged Metrics
-| Metric | Description |
-|--------|-------------|
-| Win Rate | Percentage of profitable trades |
-| Profit Factor | Gross profit / Gross loss |
-| Sharpe Ratio | Risk-adjusted return measure |
-| Max Drawdown | Largest peak-to-trough decline |
-| Expectancy | Expected profit per trade |
-| Consistency Score | How evenly distributed profits are |
-
-### GitHub Sync
-Results are automatically synced to the `results/` directory:
-```
-results/
-├── PERFORMANCE_SUMMARY.md    # Overall statistics
-└── session_<id>/
-    ├── session.json          # Full session data
-    ├── trades.csv            # Trade list
-    └── report.md             # Markdown report
-```
-
-Each sync creates a commit with P&L summary in the message.
-
-## Project Structure
-
-```
-futures_trading_agent/
-├── main.py                      # Entry point (CLI + GUI)
-├── requirements.txt             # Dependencies
-├── config/
-│   ├── settings.py              # Configuration
-│   └── prop_firm_rules.py       # MFFU rules
-├── data/
-│   └── fetcher.py               # Yahoo Finance data
-├── strategy/
-│   ├── trend_following.py       # Main strategy
-│   └── indicators.py            # Technical indicators
-├── risk/
-│   └── manager.py               # Risk management
-├── backtest/
-│   └── engine.py                # Backtesting
-├── execution/
-│   ├── paper_trading.py         # Paper trading engine
-│   ├── tradovate_client.py      # Tradovate API client
-│   ├── trading_interface.py     # Unified interface
-│   └── live_trader.py           # Live trading runner
-├── gui/                         # Graphical Interface
-│   ├── main_window.py           # Main application window
-│   ├── dashboard.py             # Trading dashboard
-│   ├── news_feed.py             # News feed widget
-│   ├── model_health.py          # Health visualization
-│   └── logs_widget.py           # Logs display and GitHub sync
-├── news/                        # News & Sentiment
-│   ├── fetcher.py               # Multi-source news fetcher
-│   └── sentiment.py             # Sentiment analysis engine
-├── logs/                        # Performance Logging (NEW)
-│   ├── tracker.py               # Trade and session tracking
-│   ├── metrics.py               # Performance metrics calculator
-│   ├── storage.py               # Log persistence
-│   └── github_sync.py           # GitHub sync functionality
-└── results/                     # Synced results (gitignore optional)
-```
-
-## Strategy
-
-**Trend Following** with:
-- EMA alignment (9/21/200)
-- ADX trend strength filter (>25)
-- RSI momentum filter
-- ATR-based stops and targets
-- Bracket orders (entry + stop loss + take profit)
-
 ## Risk Management
 
-- 1% max risk per trade (configurable)
-- Position sizing based on ATR
-- Prop firm drawdown limits enforced
-- Scaling plan limits
-- Daily trade limits
-
-## VirtualBox Shared Folders
-
-If running Kali in VirtualBox:
-```bash
-# Find shared folders
-ls /media/sf_*
-
-# Add user to vboxsf group
-sudo usermod -aG vboxsf $USER
-# Log out and back in
-```
+- EOD trailing drawdown enforcement (MFFU-specific)
+- Position sizing based on ATR and account risk percentage
+- Scaling plan enforcement per MFFU tier
+- Maximum daily trade limits
+- Consecutive loss circuit breaker
+- Per-trade risk capping (configurable, default 1%)
 
 ## Disclaimer
 
-⚠️ **RISK WARNING**
-
-Futures trading involves substantial risk of loss. This software is for educational purposes only. Past performance does not guarantee future results. Only trade with money you can afford to lose.
-
-Not financial advice. Use at your own risk.
+**RISK WARNING**: Futures trading involves substantial risk of loss. This software is for educational purposes only. Past performance does not guarantee future results. Only trade with money you can afford to lose. Not financial advice.
 
 ## License
 

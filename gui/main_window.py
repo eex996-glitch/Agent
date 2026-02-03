@@ -111,7 +111,7 @@ class BacktestWorker(QThread):
                 symbol=self.config.get('symbol', 'MES'),
                 point_value=self.config.get('point_value', 5.0),
                 max_loss_limit=self.config.get('max_loss_limit', 2000),
-                daily_loss_limit=self.config.get('daily_loss_limit', 1000),
+                daily_loss_limit=0,  # MFFU has no daily loss limit
                 max_risk_per_trade=self.config.get('risk_per_trade', 0.01),
                 max_contracts=self.config.get('max_contracts', 5)
             )
@@ -264,21 +264,18 @@ class BacktestDialog(QDialog):
         self.symbol_combo.addItems(["MES", "ES", "NQ", "MNQ"])
         config_layout.addWidget(self.symbol_combo, 0, 3)
 
-        # Max loss limit
-        config_layout.addWidget(QLabel("Max Loss Limit:"), 1, 0)
-        self.max_loss_spin = QDoubleSpinBox()
-        self.max_loss_spin.setRange(100, 10000)
-        self.max_loss_spin.setValue(2000)
-        self.max_loss_spin.setPrefix("$")
-        config_layout.addWidget(self.max_loss_spin, 1, 1)
+        # MFFU Account Tier
+        config_layout.addWidget(QLabel("MFFU Tier:"), 1, 0)
+        self.tier_combo = QComboBox()
+        self.tier_combo.addItems(["Starter ($50K)", "Standard ($100K)", "Premium ($150K)"])
+        self.tier_combo.currentIndexChanged.connect(self._on_tier_changed)
+        config_layout.addWidget(self.tier_combo, 1, 1)
 
-        # Daily loss limit
-        config_layout.addWidget(QLabel("Daily Loss Limit:"), 1, 2)
-        self.daily_loss_spin = QDoubleSpinBox()
-        self.daily_loss_spin.setRange(100, 5000)
-        self.daily_loss_spin.setValue(1000)
-        self.daily_loss_spin.setPrefix("$")
-        config_layout.addWidget(self.daily_loss_spin, 1, 3)
+        # Max loss limit (set by tier, read-only display)
+        config_layout.addWidget(QLabel("Max Loss (EOD):"), 1, 2)
+        self.max_loss_label = QLabel("$2,000")
+        self.max_loss_label.setStyleSheet("color: #ff4444; font-weight: bold;")
+        config_layout.addWidget(self.max_loss_label, 1, 3)
 
         # Risk per trade
         config_layout.addWidget(QLabel("Risk Per Trade:"), 2, 0)
@@ -348,6 +345,30 @@ class BacktestDialog(QDialog):
 
         layout.addLayout(button_layout)
 
+    def _on_tier_changed(self, index):
+        """Update settings when MFFU tier changes"""
+        tier_settings = [
+            (50000, 2000, 5, "$2,000"),
+            (100000, 3500, 10, "$3,500"),
+            (150000, 5000, 15, "$5,000"),
+        ]
+        if 0 <= index < len(tier_settings):
+            balance, max_loss, max_contracts, loss_text = tier_settings[index]
+            self.balance_spin.setValue(balance)
+            self.max_loss_label.setText(loss_text)
+
+    def _get_tier_max_loss(self):
+        """Get max loss limit for selected tier"""
+        tier_losses = [2000, 3500, 5000]
+        index = self.tier_combo.currentIndex()
+        return tier_losses[index] if 0 <= index < len(tier_losses) else 2000
+
+    def _get_tier_max_contracts(self):
+        """Get max contracts for selected tier"""
+        tier_contracts = [5, 10, 15]
+        index = self.tier_combo.currentIndex()
+        return tier_contracts[index] if 0 <= index < len(tier_contracts) else 5
+
     def run_backtest(self):
         """Start the backtest"""
         self.run_btn.setEnabled(False)
@@ -358,10 +379,10 @@ class BacktestDialog(QDialog):
         config = {
             'starting_balance': self.balance_spin.value(),
             'symbol': self.symbol_combo.currentText(),
-            'max_loss_limit': self.max_loss_spin.value(),
-            'daily_loss_limit': self.daily_loss_spin.value(),
+            'max_loss_limit': self._get_tier_max_loss(),
             'risk_per_trade': self.risk_spin.value() / 100,
             'num_bars': self.bars_spin.value(),
+            'max_contracts': self._get_tier_max_contracts(),
             'point_value': 5.0 if 'M' in self.symbol_combo.currentText() else 50.0
         }
 
@@ -726,6 +747,9 @@ class MainWindow(QMainWindow):
         self.model_health = ModelHealthWidget()
         self.tabs.addTab(self.model_health, "Model Health")
 
+        # Connect news sentiment to dashboard
+        self.news_feed.sentiment_updated.connect(self._on_sentiment_updated)
+
         # Logs tab
         self.logs_widget = LogsWidget()
         self.tabs.addTab(self.logs_widget, "Logs")
@@ -751,6 +775,20 @@ class MainWindow(QMainWindow):
         self.dashboard.update_data()
         self.news_feed.update_feed()
         self.model_health.update_health()
+
+    def _on_sentiment_updated(self, score):
+        """Update dashboard with news sentiment score"""
+        if score > 0.3:
+            label = "Bullish"
+            color = "#00ff41"
+        elif score < -0.3:
+            label = "Bearish"
+            color = "#ff4444"
+        else:
+            label = "Neutral"
+            color = "#ffcc00"
+        self.dashboard.sentiment_label.setText(f"{label} ({score:+.2f})")
+        self.dashboard.sentiment_label.setStyleSheet(f"color: {color};")
 
     def start_trading(self):
         """Start trading"""
