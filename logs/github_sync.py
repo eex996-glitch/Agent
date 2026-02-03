@@ -69,13 +69,23 @@ class GitHubSync:
                 cmd,
                 capture_output=True,
                 text=True,
-                check=check
+                check=check,
+                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
             )
             return result
         except subprocess.CalledProcessError as e:
             logger.error(f"Git command failed: {' '.join(cmd)}")
             logger.error(f"stderr: {e.stderr}")
             raise
+
+    def _ensure_git_identity(self):
+        """Ensure git user.name and user.email are set (required for commit)"""
+        name_result = self._run_git("config", "user.name", check=False)
+        if name_result.returncode != 0 or not name_result.stdout.strip():
+            self._run_git("config", "user.name", "Trading Agent")
+        email_result = self._run_git("config", "user.email", check=False)
+        if email_result.returncode != 0 or not email_result.stdout.strip():
+            self._run_git("config", "user.email", "agent@localhost")
 
     def _get_current_branch(self) -> str:
         """Get current git branch"""
@@ -140,6 +150,8 @@ class GitHubSync:
             files_to_add.append(str(summary_file))
 
             # Git operations
+            self._ensure_git_identity()
+
             for f in files_to_add:
                 self._run_git("add", f)
 
@@ -185,16 +197,12 @@ class GitHubSync:
         """Generate markdown report for a session"""
         s = session
 
-        # Determine status emoji
         pnl = s.get('net_pnl', 0)
         if pnl > 0:
-            status_emoji = ""
             status_text = "PROFITABLE"
         elif pnl < 0:
-            status_emoji = ""
             status_text = "LOSS"
         else:
-            status_emoji = ""
             status_text = "BREAK-EVEN"
 
         report = f"""# Trading Session Report
@@ -203,7 +211,7 @@ class GitHubSync:
 
 | Property | Value |
 |----------|-------|
-| **Status** | {status_emoji} {status_text} |
+| **Status** | {status_text} |
 | **Mode** | {s.get('mode', 'paper').upper()} |
 | **Symbol** | {s.get('symbol', 'MES')} |
 | **Start** | {s.get('start_time', '')[:19]} |
@@ -309,19 +317,23 @@ class GitHubSync:
         win_rate = session.get('win_rate', 0)
 
         if pnl > 0:
-            emoji = ""
+            tag = "[PROFIT]"
         elif pnl < 0:
-            emoji = ""
+            tag = "[LOSS]"
         else:
-            emoji = ""
+            tag = "[FLAT]"
 
-        return f"""{emoji} Session {session_id}: ${pnl:+,.2f} ({trades} trades, {win_rate:.1f}% win rate)
-
-Mode: {session.get('mode', 'paper')}
-Symbol: {session.get('symbol', 'MES')}
-Profit Factor: {session.get('profit_factor', 0):.2f}
-Max Drawdown: ${session.get('max_drawdown', 0):.2f}
-"""
+        subject = (
+            f"{tag} Session {session_id}: "
+            f"${pnl:+,.2f} ({trades} trades, {win_rate:.1f}% win rate)"
+        )
+        body = (
+            f"Mode: {session.get('mode', 'paper')}\n"
+            f"Symbol: {session.get('symbol', 'MES')}\n"
+            f"Profit Factor: {session.get('profit_factor', 0):.2f}\n"
+            f"Max Drawdown: ${session.get('max_drawdown', 0):.2f}"
+        )
+        return f"{subject}\n\n{body}"
 
     def _update_summary(self) -> Path:
         """Update the overall performance summary"""
@@ -380,11 +392,11 @@ Max Drawdown: ${session.get('max_drawdown', 0):.2f}
             pnl = s.get('net_pnl', 0)
 
             if pnl > 0:
-                status = ""
+                status = "PROFIT"
             elif pnl < 0:
-                status = ""
+                status = "LOSS"
             else:
-                status = ""
+                status = "FLAT"
 
             summary += f"| {session_id} | {date} | {mode} | {symbol} | {trades} | {win_rate:.1f}% | ${pnl:,.2f} | {status} |\n"
 
