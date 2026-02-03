@@ -78,9 +78,11 @@ class ProfitChart(QWidget):
         super().__init__()
         self.data = []
         self.setMinimumHeight(200)
+        self.is_simulation = True
 
-    def set_data(self, data):
+    def set_data(self, data, is_simulation=True):
         self.data = data[-50:]  # Keep last 50 points
+        self.is_simulation = is_simulation
         self.update()
 
     def add_point(self, value):
@@ -90,18 +92,29 @@ class ProfitChart(QWidget):
         self.update()
 
     def paintEvent(self, event):
-        if not self.data:
-            return
-
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         width = self.width()
         height = self.height()
-        padding = 40
+        padding = 50
 
         # Draw background
         painter.fillRect(0, 0, width, height, QColor("#0f0f1a"))
+
+        # Draw simulation notice if applicable
+        if self.is_simulation:
+            painter.setPen(QColor("#ffcc00"))
+            font = QFont("Hack", 9)
+            painter.setFont(font)
+            painter.drawText(width - 150, 15, "SIMULATION DATA")
+
+        if not self.data:
+            painter.setPen(QColor("#666"))
+            font = QFont("Hack", 12)
+            painter.setFont(font)
+            painter.drawText(0, 0, width, height, Qt.AlignCenter, "No data yet")
+            return
 
         # Draw grid
         painter.setPen(QPen(QColor("#3a3a5e"), 1))
@@ -123,6 +136,10 @@ class ProfitChart(QWidget):
             zero_y = height - padding - ((0 - min_val) / range_val) * (height - 2 * padding)
             painter.setPen(QPen(QColor("#666"), 1, Qt.DashLine))
             painter.drawLine(padding, int(zero_y), width - padding, int(zero_y))
+            painter.setPen(QColor("#888"))
+            font = QFont("Hack", 8)
+            painter.setFont(font)
+            painter.drawText(5, int(zero_y) + 4, "$0")
 
         # Draw profit line
         if len(self.data) > 1:
@@ -168,9 +185,9 @@ class ProfitChart(QWidget):
             current = self.data[-1]
             color = "#00ff41" if current >= 0 else "#ff4444"
             painter.setPen(QColor(color))
-            font = QFont("Hack", 12, QFont.Bold)
+            font = QFont("Hack", 14, QFont.Bold)
             painter.setFont(font)
-            painter.drawText(width - 100, 20, f"${current:,.2f}")
+            painter.drawText(width - 120, 35, f"${current:,.2f}")
 
 
 class HealthMetric(QFrame):
@@ -238,6 +255,7 @@ class ModelHealthWidget(QWidget):
         super().__init__()
         self.profit_history = [0]
         self.confidence = 50
+        self.is_trading = False
         self.setup_ui()
 
         # Simulation timer for demo
@@ -273,6 +291,12 @@ class ModelHealthWidget(QWidget):
         self.confidence_gauge.set_value(75)
         gauge_layout.addWidget(self.confidence_gauge, alignment=Qt.AlignCenter)
 
+        # Explanation
+        confidence_info = QLabel("Based on recent signal accuracy\nand market conditions")
+        confidence_info.setStyleSheet("color: #666; font-size: 10px;")
+        confidence_info.setAlignment(Qt.AlignCenter)
+        gauge_layout.addWidget(confidence_info)
+
         gauges_layout.addWidget(gauge_frame)
 
         # Component confidences
@@ -290,6 +314,10 @@ class ModelHealthWidget(QWidget):
         comp_title = QLabel("COMPONENT CONFIDENCE")
         comp_title.setStyleSheet("color: #00ccff; font-weight: bold;")
         components_layout.addWidget(comp_title)
+
+        comp_info = QLabel("Individual component performance metrics")
+        comp_info.setStyleSheet("color: #666; font-size: 10px;")
+        components_layout.addWidget(comp_info)
 
         self.trend_bar = self.create_confidence_bar("Trend Detection")
         components_layout.addLayout(self.trend_bar['layout'])
@@ -322,12 +350,17 @@ class ModelHealthWidget(QWidget):
         perf_title.setStyleSheet("color: #ffcc00; font-weight: bold;")
         perf_layout.addWidget(perf_title)
 
+        # Mode indicator
+        self.mode_label = QLabel("Mode: SIMULATION")
+        self.mode_label.setStyleSheet("color: #ffcc00; font-size: 10px;")
+        perf_layout.addWidget(self.mode_label)
+
         self.total_pnl_label = QLabel("$0.00")
         self.total_pnl_label.setStyleSheet("color: #00ff41; font-size: 28px; font-weight: bold;")
         self.total_pnl_label.setAlignment(Qt.AlignCenter)
         perf_layout.addWidget(self.total_pnl_label)
 
-        pnl_subtitle = QLabel("Total P&L")
+        pnl_subtitle = QLabel("Simulated P&L")
         pnl_subtitle.setStyleSheet("color: #666;")
         pnl_subtitle.setAlignment(Qt.AlignCenter)
         perf_layout.addWidget(pnl_subtitle)
@@ -373,18 +406,37 @@ class ModelHealthWidget(QWidget):
         chart_layout = QVBoxLayout(chart_frame)
 
         chart_header = QHBoxLayout()
-        chart_title = QLabel("📈 EQUITY CURVE")
+        chart_title = QLabel("EQUITY CURVE")
         chart_title.setStyleSheet("color: #00ff41; font-weight: bold;")
         chart_header.addWidget(chart_title)
+
         chart_header.addStretch()
 
-        self.chart_status = QLabel("● Live")
-        self.chart_status.setStyleSheet("color: #00ff41;")
+        # Chart info/explanation
+        chart_info = QLabel("Simulated performance - not actual trading results")
+        chart_info.setStyleSheet("color: #ffcc00; font-size: 10px;")
+        chart_header.addWidget(chart_info)
+
+        self.chart_status = QLabel("● Demo Mode")
+        self.chart_status.setStyleSheet("color: #ffcc00;")
         chart_header.addWidget(self.chart_status)
         chart_layout.addLayout(chart_header)
 
         self.profit_chart = ProfitChart()
         chart_layout.addWidget(self.profit_chart)
+
+        # Chart legend
+        legend_layout = QHBoxLayout()
+        legend_layout.addStretch()
+
+        legend_info = QLabel("This chart shows simulated equity based on demo data. "
+                            "Run actual trades or backtests for real performance data.")
+        legend_info.setStyleSheet("color: #666; font-size: 10px;")
+        legend_info.setWordWrap(True)
+        legend_layout.addWidget(legend_info)
+
+        legend_layout.addStretch()
+        chart_layout.addLayout(legend_layout)
 
         layout.addWidget(chart_frame)
 
@@ -400,20 +452,29 @@ class ModelHealthWidget(QWidget):
         """)
         health_layout = QVBoxLayout(health_frame)
 
-        health_title = QLabel("🔧 SYSTEM HEALTH")
+        health_header = QHBoxLayout()
+        health_title = QLabel("SYSTEM HEALTH")
         health_title.setStyleSheet("color: #00ff41; font-weight: bold;")
-        health_layout.addWidget(health_title)
+        health_header.addWidget(health_title)
+
+        health_header.addStretch()
+
+        health_info = QLabel("Real-time system component status")
+        health_info.setStyleSheet("color: #666; font-size: 10px;")
+        health_header.addWidget(health_info)
+
+        health_layout.addLayout(health_header)
 
         metrics_grid = QGridLayout()
 
         self.health_metrics = {}
         metrics = [
-            ("API Connection", "Connected", "ok"),
-            ("Data Feed", "Active", "ok"),
-            ("Order Execution", "Ready", "ok"),
+            ("API Connection", "Simulated", "warning"),
+            ("Data Feed", "Demo Mode", "warning"),
+            ("Order Execution", "Paper Only", "warning"),
             ("Risk Monitor", "Active", "ok"),
             ("News Feed", "Active", "ok"),
-            ("Model Status", "Running", "ok"),
+            ("Model Status", "Ready", "ok"),
         ]
 
         for i, (name, value, status) in enumerate(metrics):
@@ -500,32 +561,38 @@ class ModelHealthWidget(QWidget):
         self.update_confidence_bar(self.risk_bar, random.uniform(60, 95))
         self.update_confidence_bar(self.sentiment_bar, random.uniform(30, 80))
 
-        # Update profit chart
+        # Update profit chart with simulation data
         last_profit = self.profit_history[-1] if self.profit_history else 0
-        change = random.uniform(-50, 75)  # Slightly bullish bias
+        change = random.uniform(-50, 75)  # Slightly bullish bias for demo
         new_profit = last_profit + change
         self.profit_history.append(new_profit)
-        self.profit_chart.set_data(self.profit_history)
+        self.profit_chart.set_data(self.profit_history, is_simulation=True)
 
         # Update P&L display
         color = "#00ff41" if new_profit >= 0 else "#ff4444"
         self.total_pnl_label.setText(f"${new_profit:,.2f}")
         self.total_pnl_label.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
 
-        # Update performance metrics
+        # Update performance metrics (simulated)
         self.win_rate_label.setText(f"{random.uniform(45, 65):.1f}%")
         self.profit_factor_label.setText(f"{random.uniform(1.2, 2.5):.2f}")
         self.sharpe_label.setText(f"{random.uniform(0.8, 2.2):.2f}")
         self.max_dd_label.setText(f"${random.uniform(200, 800):.2f}")
 
-    def set_pnl(self, pnl):
+    def set_pnl(self, pnl, is_simulation=False):
         """Set the P&L value"""
         self.profit_history.append(pnl)
-        self.profit_chart.set_data(self.profit_history)
+        self.profit_chart.set_data(self.profit_history, is_simulation=is_simulation)
 
         color = "#00ff41" if pnl >= 0 else "#ff4444"
         self.total_pnl_label.setText(f"${pnl:,.2f}")
         self.total_pnl_label.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
+
+        if not is_simulation:
+            self.mode_label.setText("Mode: LIVE DATA")
+            self.mode_label.setStyleSheet("color: #00ff41; font-size: 10px;")
+            self.chart_status.setText("● Live")
+            self.chart_status.setStyleSheet("color: #00ff41;")
 
     def set_confidence(self, overall, trend=None, signal=None, risk=None, sentiment=None):
         """Set confidence values"""
@@ -544,3 +611,27 @@ class ModelHealthWidget(QWidget):
         """Set health metric status"""
         if name in self.health_metrics:
             self.health_metrics[name].set_value(value, status)
+
+    def set_live_mode(self, is_live):
+        """Switch between live and simulation mode"""
+        self.is_trading = is_live
+        if is_live:
+            self.mode_label.setText("Mode: LIVE")
+            self.mode_label.setStyleSheet("color: #00ff41; font-size: 10px;")
+            self.chart_status.setText("● Live")
+            self.chart_status.setStyleSheet("color: #00ff41;")
+
+            # Update health metrics for live mode
+            self.health_metrics["API Connection"].set_value("Connected", "ok")
+            self.health_metrics["Data Feed"].set_value("Live", "ok")
+            self.health_metrics["Order Execution"].set_value("Ready", "ok")
+        else:
+            self.mode_label.setText("Mode: SIMULATION")
+            self.mode_label.setStyleSheet("color: #ffcc00; font-size: 10px;")
+            self.chart_status.setText("● Demo Mode")
+            self.chart_status.setStyleSheet("color: #ffcc00;")
+
+            # Update health metrics for demo mode
+            self.health_metrics["API Connection"].set_value("Simulated", "warning")
+            self.health_metrics["Data Feed"].set_value("Demo Mode", "warning")
+            self.health_metrics["Order Execution"].set_value("Paper Only", "warning")

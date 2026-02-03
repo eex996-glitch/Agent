@@ -5,12 +5,16 @@ Kali Linux compatible PyQt5 interface
 """
 
 import sys
+import json
+from datetime import datetime
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QStatusBar, QMenuBar, QMenu, QAction, QLabel,
-    QMessageBox, QSplitter, QFrame
+    QMessageBox, QSplitter, QFrame, QDialog, QGroupBox, QSpinBox,
+    QDoubleSpinBox, QComboBox, QPushButton, QProgressBar, QTextEdit,
+    QGridLayout, QFormLayout
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette, QColor
 
 from .dashboard import DashboardWidget
@@ -19,12 +23,459 @@ from .model_health import ModelHealthWidget
 from .logs_widget import LogsWidget
 
 
+class BacktestWorker(QThread):
+    """Background worker for running backtests"""
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+
+    def run(self):
+        try:
+            import pandas as pd
+            import numpy as np
+            from backtest.engine import BacktestEngine, BacktestConfig
+            from strategy.trend_following import TrendFollowingStrategy
+
+            self.progress.emit("Initializing backtest...")
+
+            # Create backtest config
+            bt_config = BacktestConfig(
+                starting_balance=self.config.get('starting_balance', 50000),
+                symbol=self.config.get('symbol', 'MES'),
+                point_value=self.config.get('point_value', 5.0),
+                max_loss_limit=self.config.get('max_loss_limit', 2000),
+                daily_loss_limit=self.config.get('daily_loss_limit', 1000),
+                max_risk_per_trade=self.config.get('risk_per_trade', 0.01),
+                max_contracts=self.config.get('max_contracts', 5)
+            )
+
+            self.progress.emit("Generating historical data...")
+
+            # Generate sample data for backtest
+            np.random.seed(42)
+            n_bars = self.config.get('num_bars', 2000)
+            dates = pd.date_range(start='2024-01-01', periods=n_bars, freq='5min')
+
+            # Generate trending price data with volatility
+            trend = np.cumsum(np.random.randn(n_bars) * 0.3 + 0.01)
+            noise = np.random.randn(n_bars) * 0.5
+            close = 5000 + trend + noise
+
+            high = close + np.abs(np.random.randn(n_bars) * 1.0)
+            low = close - np.abs(np.random.randn(n_bars) * 1.0)
+            volume = np.random.randint(1000, 10000, n_bars)
+
+            df = pd.DataFrame({
+                'open': np.roll(close, 1),
+                'high': high,
+                'low': low,
+                'close': close,
+                'volume': volume
+            }, index=dates)
+            df['open'].iloc[0] = df['close'].iloc[0]
+
+            self.progress.emit("Preparing strategy...")
+
+            # Create and prepare strategy
+            strategy = TrendFollowingStrategy(
+                name="TrendFollowing_Backtest",
+                params={'adx_threshold': 20.0}
+            )
+            df = strategy.prepare_data(df)
+
+            self.progress.emit("Running backtest simulation...")
+
+            # Run backtest
+            engine = BacktestEngine(bt_config)
+            result = engine.run(strategy, df, start_idx=250)
+
+            self.progress.emit("Calculating results...")
+
+            # Convert result to dictionary
+            result_dict = {
+                'strategy_name': result.strategy_name,
+                'start_date': str(result.start_date),
+                'end_date': str(result.end_date),
+                'starting_balance': bt_config.starting_balance,
+                'ending_balance': bt_config.starting_balance + result.total_return,
+                'total_return': result.total_return,
+                'total_return_pct': result.total_return_pct,
+                'num_trades': result.num_trades,
+                'num_winners': result.num_winners,
+                'num_losers': result.num_losers,
+                'win_rate': result.win_rate * 100,
+                'avg_winner': result.avg_winner,
+                'avg_loser': result.avg_loser,
+                'profit_factor': result.profit_factor,
+                'max_drawdown': result.max_drawdown,
+                'max_drawdown_pct': result.max_drawdown_pct,
+                'sharpe_ratio': result.sharpe_ratio,
+                'sortino_ratio': result.sortino_ratio,
+                'avg_trade': result.avg_trade,
+                'avg_bars_held': result.avg_bars_held,
+                'best_day': result.best_day,
+                'worst_day': result.worst_day,
+                'consistency_score': result.consistency_score,
+                'trades': [
+                    {
+                        'entry_time': str(t.entry_time),
+                        'exit_time': str(t.exit_time),
+                        'direction': t.direction,
+                        'entry_price': t.entry_price,
+                        'exit_price': t.exit_price,
+                        'quantity': t.quantity,
+                        'net_pnl': t.net_pnl,
+                        'exit_reason': t.exit_reason,
+                        'bars_held': t.bars_held
+                    } for t in result.trades
+                ]
+            }
+
+            self.progress.emit("Backtest complete!")
+            self.finished.emit(result_dict)
+
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+class BacktestDialog(QDialog):
+    """Dialog for running backtests"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Run Backtest")
+        self.setMinimumSize(800, 600)
+        self.result = None
+        self.worker = None
+        self.setup_ui()
+        self.apply_dark_theme()
+
+    def apply_dark_theme(self):
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #1a1a2e;
+                color: #eee;
+            }
+            QGroupBox {
+                background-color: #16213e;
+                border: 1px solid #3a3a5e;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 15px;
+                color: #00ff41;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+            QLabel {
+                color: #eee;
+            }
+            QSpinBox, QDoubleSpinBox, QComboBox {
+                background-color: #0f0f1a;
+                color: #00ff41;
+                border: 1px solid #3a3a5e;
+                padding: 5px;
+                border-radius: 4px;
+            }
+            QPushButton {
+                background-color: #3a3a5e;
+                color: #eee;
+                border: none;
+                padding: 10px 20px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #00ff41;
+                color: #000;
+            }
+            QPushButton:disabled {
+                background-color: #2a2a3e;
+                color: #666;
+            }
+            QProgressBar {
+                background-color: #0f0f1a;
+                border: 1px solid #3a3a5e;
+                border-radius: 4px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #00ff41;
+            }
+            QTextEdit {
+                background-color: #0f0f1a;
+                color: #00ff41;
+                border: 1px solid #3a3a5e;
+                font-family: 'Hack', monospace;
+            }
+        """)
+
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+
+        # Configuration section
+        config_group = QGroupBox("Backtest Configuration")
+        config_layout = QGridLayout(config_group)
+
+        # Starting balance
+        config_layout.addWidget(QLabel("Starting Balance:"), 0, 0)
+        self.balance_spin = QDoubleSpinBox()
+        self.balance_spin.setRange(1000, 1000000)
+        self.balance_spin.setValue(50000)
+        self.balance_spin.setPrefix("$")
+        config_layout.addWidget(self.balance_spin, 0, 1)
+
+        # Symbol
+        config_layout.addWidget(QLabel("Symbol:"), 0, 2)
+        self.symbol_combo = QComboBox()
+        self.symbol_combo.addItems(["MES", "ES", "NQ", "MNQ"])
+        config_layout.addWidget(self.symbol_combo, 0, 3)
+
+        # Max loss limit
+        config_layout.addWidget(QLabel("Max Loss Limit:"), 1, 0)
+        self.max_loss_spin = QDoubleSpinBox()
+        self.max_loss_spin.setRange(100, 10000)
+        self.max_loss_spin.setValue(2000)
+        self.max_loss_spin.setPrefix("$")
+        config_layout.addWidget(self.max_loss_spin, 1, 1)
+
+        # Daily loss limit
+        config_layout.addWidget(QLabel("Daily Loss Limit:"), 1, 2)
+        self.daily_loss_spin = QDoubleSpinBox()
+        self.daily_loss_spin.setRange(100, 5000)
+        self.daily_loss_spin.setValue(1000)
+        self.daily_loss_spin.setPrefix("$")
+        config_layout.addWidget(self.daily_loss_spin, 1, 3)
+
+        # Risk per trade
+        config_layout.addWidget(QLabel("Risk Per Trade:"), 2, 0)
+        self.risk_spin = QDoubleSpinBox()
+        self.risk_spin.setRange(0.5, 5.0)
+        self.risk_spin.setValue(1.0)
+        self.risk_spin.setSuffix("%")
+        config_layout.addWidget(self.risk_spin, 2, 1)
+
+        # Number of bars
+        config_layout.addWidget(QLabel("Bars to Simulate:"), 2, 2)
+        self.bars_spin = QSpinBox()
+        self.bars_spin.setRange(500, 10000)
+        self.bars_spin.setValue(2000)
+        config_layout.addWidget(self.bars_spin, 2, 3)
+
+        layout.addWidget(config_group)
+
+        # Progress section
+        progress_group = QGroupBox("Progress")
+        progress_layout = QVBoxLayout(progress_group)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self.progress_bar.hide()
+        progress_layout.addWidget(self.progress_bar)
+
+        self.status_label = QLabel("Ready to run backtest")
+        self.status_label.setStyleSheet("color: #888;")
+        progress_layout.addWidget(self.status_label)
+
+        layout.addWidget(progress_group)
+
+        # Results section
+        results_group = QGroupBox("Results")
+        results_layout = QVBoxLayout(results_group)
+
+        self.results_text = QTextEdit()
+        self.results_text.setReadOnly(True)
+        self.results_text.setPlaceholderText("Backtest results will appear here...")
+        results_layout.addWidget(self.results_text)
+
+        layout.addWidget(results_group)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+
+        self.run_btn = QPushButton("Run Backtest")
+        self.run_btn.clicked.connect(self.run_backtest)
+        self.run_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00ff41;
+                color: #000;
+                font-weight: bold;
+            }
+        """)
+        button_layout.addWidget(self.run_btn)
+
+        self.save_btn = QPushButton("Save to Logs")
+        self.save_btn.clicked.connect(self.save_results)
+        self.save_btn.setEnabled(False)
+        button_layout.addWidget(self.save_btn)
+
+        self.close_btn = QPushButton("Close")
+        self.close_btn.clicked.connect(self.close)
+        button_layout.addWidget(self.close_btn)
+
+        layout.addLayout(button_layout)
+
+    def run_backtest(self):
+        """Start the backtest"""
+        self.run_btn.setEnabled(False)
+        self.save_btn.setEnabled(False)
+        self.progress_bar.show()
+        self.results_text.clear()
+
+        config = {
+            'starting_balance': self.balance_spin.value(),
+            'symbol': self.symbol_combo.currentText(),
+            'max_loss_limit': self.max_loss_spin.value(),
+            'daily_loss_limit': self.daily_loss_spin.value(),
+            'risk_per_trade': self.risk_spin.value() / 100,
+            'num_bars': self.bars_spin.value(),
+            'point_value': 5.0 if 'M' in self.symbol_combo.currentText() else 50.0
+        }
+
+        self.worker = BacktestWorker(config)
+        self.worker.progress.connect(self.on_progress)
+        self.worker.finished.connect(self.on_finished)
+        self.worker.error.connect(self.on_error)
+        self.worker.start()
+
+    def on_progress(self, message):
+        """Handle progress updates"""
+        self.status_label.setText(message)
+        self.status_label.setStyleSheet("color: #ffcc00;")
+
+    def on_finished(self, result):
+        """Handle backtest completion"""
+        self.result = result
+        self.progress_bar.hide()
+        self.run_btn.setEnabled(True)
+        self.save_btn.setEnabled(True)
+        self.status_label.setText("Backtest complete!")
+        self.status_label.setStyleSheet("color: #00ff41;")
+
+        # Format results
+        r = result
+        pnl_color = "#00ff41" if r['total_return'] >= 0 else "#ff4444"
+
+        report = f"""
+================================================================================
+                         BACKTEST RESULTS
+================================================================================
+
+Strategy: {r['strategy_name']}
+Period: {r['start_date'][:10]} to {r['end_date'][:10]}
+
+--------------------------------------------------------------------------------
+                           ACCOUNT SUMMARY
+--------------------------------------------------------------------------------
+
+Starting Balance:     ${r['starting_balance']:>12,.2f}
+Ending Balance:       ${r['ending_balance']:>12,.2f}
+Net P&L:              ${r['total_return']:>12,.2f} ({r['total_return_pct']:+.2f}%)
+
+--------------------------------------------------------------------------------
+                           TRADE STATISTICS
+--------------------------------------------------------------------------------
+
+Total Trades:         {r['num_trades']:>12}
+Winning Trades:       {r['num_winners']:>12}
+Losing Trades:        {r['num_losers']:>12}
+Win Rate:             {r['win_rate']:>12.1f}%
+
+Average Winner:       ${r['avg_winner']:>12,.2f}
+Average Loser:        ${r['avg_loser']:>12,.2f}
+Average Trade:        ${r['avg_trade']:>12,.2f}
+Profit Factor:        {r['profit_factor']:>12.2f}
+
+--------------------------------------------------------------------------------
+                            RISK METRICS
+--------------------------------------------------------------------------------
+
+Max Drawdown:         ${r['max_drawdown']:>12,.2f} ({r['max_drawdown_pct']:.2f}%)
+Sharpe Ratio:         {r['sharpe_ratio']:>12.2f}
+Sortino Ratio:        {r['sortino_ratio']:>12.2f}
+
+--------------------------------------------------------------------------------
+                         CONSISTENCY (PROP FIRM)
+--------------------------------------------------------------------------------
+
+Best Day:             ${r['best_day']:>12,.2f}
+Worst Day:            ${r['worst_day']:>12,.2f}
+Consistency Score:    {r['consistency_score']:>12.1f}%
+
+================================================================================
+                           SAMPLE TRADES
+================================================================================
+"""
+        # Add sample trades
+        for i, trade in enumerate(r['trades'][:10]):
+            pnl_str = f"${trade['net_pnl']:+,.2f}"
+            report += f"\n{i+1}. {trade['direction']:5} | Entry: ${trade['entry_price']:.2f} | "
+            report += f"Exit: ${trade['exit_price']:.2f} | P/L: {pnl_str:>10} | {trade['exit_reason']}"
+
+        if len(r['trades']) > 10:
+            report += f"\n\n... and {len(r['trades']) - 10} more trades"
+
+        self.results_text.setText(report)
+
+    def on_error(self, error_msg):
+        """Handle backtest error"""
+        self.progress_bar.hide()
+        self.run_btn.setEnabled(True)
+        self.status_label.setText(f"Error: {error_msg}")
+        self.status_label.setStyleSheet("color: #ff4444;")
+        self.results_text.setText(f"Backtest failed:\n\n{error_msg}")
+
+    def save_results(self):
+        """Save results to logs"""
+        if not self.result:
+            return
+
+        try:
+            from logs.storage import LogStorage
+            storage = LogStorage()
+
+            # Create session data
+            session_id = f"backtest_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            session_data = {
+                'session_id': session_id,
+                'mode': 'backtest',
+                'symbol': self.symbol_combo.currentText(),
+                'start_time': self.result['start_date'],
+                'end_time': self.result['end_date'],
+                'starting_balance': self.result['starting_balance'],
+                'ending_balance': self.result['ending_balance'],
+                'net_pnl': self.result['total_return'],
+                'total_trades': self.result['num_trades'],
+                'winning_trades': self.result['num_winners'],
+                'losing_trades': self.result['num_losers'],
+                'win_rate': self.result['win_rate'],
+                'average_win': self.result['avg_winner'],
+                'average_loss': self.result['avg_loser'],
+                'profit_factor': self.result['profit_factor'],
+                'max_drawdown': self.result['max_drawdown'],
+                'sharpe_ratio': self.result['sharpe_ratio'],
+                'trades': self.result['trades']
+            }
+
+            storage.save_session(session_id, session_data)
+            QMessageBox.information(self, "Saved", f"Results saved to logs as {session_id}")
+
+        except Exception as e:
+            QMessageBox.warning(self, "Save Failed", f"Could not save results: {e}")
+
+
 class MainWindow(QMainWindow):
     """Main application window with dark theme for Kali Linux"""
 
     def __init__(self, trader=None):
         super().__init__()
         self.trader = trader
+        self.current_mode = 'paper'
         self.setWindowTitle("Futures Trading Agent - Kali Linux")
         self.setMinimumSize(1400, 900)
 
@@ -168,7 +619,14 @@ class MainWindow(QMainWindow):
         # Mode menu
         mode_menu = menubar.addMenu("&Mode")
 
-        for mode in ["Backtest", "Paper", "Demo", "Live"]:
+        backtest_action = QAction("Run &Backtest...", self)
+        backtest_action.setShortcut("Ctrl+B")
+        backtest_action.triggered.connect(self.show_backtest_dialog)
+        mode_menu.addAction(backtest_action)
+
+        mode_menu.addSeparator()
+
+        for mode in ["Paper", "Demo", "Live"]:
             action = QAction(mode, self)
             action.triggered.connect(lambda checked, m=mode: self.set_mode(m.lower()))
             mode_menu.addAction(action)
@@ -209,19 +667,19 @@ class MainWindow(QMainWindow):
 
         # Dashboard tab
         self.dashboard = DashboardWidget()
-        self.tabs.addTab(self.dashboard, "📊 Dashboard")
+        self.tabs.addTab(self.dashboard, "Dashboard")
 
         # News feed tab
         self.news_feed = NewsFeedWidget()
-        self.tabs.addTab(self.news_feed, "📰 News Feed")
+        self.tabs.addTab(self.news_feed, "News Feed")
 
         # Model health tab
         self.model_health = ModelHealthWidget()
-        self.tabs.addTab(self.model_health, "💚 Model Health")
+        self.tabs.addTab(self.model_health, "Model Health")
 
         # Logs tab
         self.logs_widget = LogsWidget()
-        self.tabs.addTab(self.logs_widget, "📋 Logs")
+        self.tabs.addTab(self.logs_widget, "Logs")
 
     def setup_status_bar(self):
         """Setup the status bar"""
@@ -235,7 +693,7 @@ class MainWindow(QMainWindow):
         self.mode_label.setStyleSheet("color: #ffcc00;")
         self.status_bar.addPermanentWidget(self.mode_label)
 
-        self.connection_label = QLabel("● Disconnected")
+        self.connection_label = QLabel("Disconnected")
         self.connection_label.setStyleSheet("color: #ff4444;")
         self.status_bar.addPermanentWidget(self.connection_label)
 
@@ -248,7 +706,7 @@ class MainWindow(QMainWindow):
     def start_trading(self):
         """Start trading"""
         self.status_label.setText("Trading started...")
-        self.connection_label.setText("● Connected")
+        self.connection_label.setText("Connected")
         self.connection_label.setStyleSheet("color: #00ff41;")
         if self.dashboard:
             self.dashboard.set_trading_active(True)
@@ -256,13 +714,14 @@ class MainWindow(QMainWindow):
     def stop_trading(self):
         """Stop trading"""
         self.status_label.setText("Trading stopped")
-        self.connection_label.setText("● Disconnected")
+        self.connection_label.setText("Disconnected")
         self.connection_label.setStyleSheet("color: #ff4444;")
         if self.dashboard:
             self.dashboard.set_trading_active(False)
 
     def set_mode(self, mode):
         """Set trading mode"""
+        self.current_mode = mode
         mode_colors = {
             'backtest': '#888888',
             'paper': '#ffcc00',
@@ -273,6 +732,14 @@ class MainWindow(QMainWindow):
         self.mode_label.setText(f"Mode: {mode.capitalize()}")
         self.mode_label.setStyleSheet(f"color: {color};")
         self.status_label.setText(f"Switched to {mode} mode")
+
+    def show_backtest_dialog(self):
+        """Show the backtest configuration dialog"""
+        dialog = BacktestDialog(self)
+        dialog.exec_()
+
+        # Refresh logs after backtest (might have saved new results)
+        self.logs_widget.load_sessions()
 
     def show_about(self):
         """Show about dialog"""
@@ -289,7 +756,7 @@ class MainWindow(QMainWindow):
             "<li>Model health monitoring</li>"
             "<li>Tradovate/MFFU integration</li>"
             "</ul>"
-            "<p>⚠️ Trading involves risk. Use responsibly.</p>"
+            "<p>Trading involves risk. Use responsibly.</p>"
         )
 
     def closeEvent(self, event):
