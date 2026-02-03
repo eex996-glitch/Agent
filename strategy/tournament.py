@@ -97,7 +97,8 @@ class TournamentResult:
         }
 
 
-def generate_realistic_data(n_bars: int = 2000, seed: int = 42) -> pd.DataFrame:
+def generate_realistic_data(n_bars: int = 2000, seed: int = 42,
+                            volatility_mult: float = 1.0) -> pd.DataFrame:
     """
     Generate realistic synthetic futures price data with:
     - Trending periods (momentum)
@@ -125,9 +126,9 @@ def generate_realistic_data(n_bars: int = 2000, seed: int = 42) -> pd.DataFrame:
     regimes = ['trend_up', 'trend_down', 'range', 'volatile']
     range_anchor = price  # For mean-reverting ranges
 
-    # Volatility (GARCH-like)
-    vol = 0.5
-    base_vol = 0.5
+    # Volatility (GARCH-like), scaled by volatility_mult
+    vol = 0.5 * volatility_mult
+    base_vol = 0.5 * volatility_mult
 
     for i in range(n_bars):
         regime_length += 1
@@ -218,7 +219,9 @@ def run_tournament(
     point_value: float = 5.0,
     symbol: str = "MES",
     n_bars: int = 2000,
-    progress_callback=None
+    progress_callback=None,
+    seed: int = 42,
+    volatility_mult: float = 1.0,
 ) -> TournamentResult:
     """
     Run a tournament of all strategies on the same data.
@@ -241,7 +244,8 @@ def run_tournament(
     if data is None:
         if progress_callback:
             progress_callback("Generating realistic market data...")
-        data = generate_realistic_data(n_bars)
+        data = generate_realistic_data(n_bars, seed=seed,
+                                       volatility_mult=volatility_mult)
 
     # Define strategies to test
     strategies = [
