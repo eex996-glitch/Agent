@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, pyqtSignal, QTimer
 from PyQt5.QtGui import QFont, QColor
 from datetime import datetime
-import random
+import math
 
 # MFFU (MyFundedFutures) available instruments with current 2026 contracts
 # Front-month contracts roll quarterly: H=Mar, M=Jun, U=Sep, Z=Dec
@@ -144,6 +144,7 @@ class DashboardWidget(QWidget):
         self.total_pnl = 0.0
         self.current_symbol = "MESH6"
         self.simulated_prices = {}  # Track simulated prices per symbol
+        self.price_history = {}  # Price history per symbol for indicator calc
         self.signal_wait_reasons = []
         self.bars_analyzed = 0
         self.last_signal_check = None
@@ -152,6 +153,7 @@ class DashboardWidget(QWidget):
         # Initialize prices for all symbols
         for symbol, config in SYMBOL_CONFIG.items():
             self.simulated_prices[symbol] = config["base_price"]
+            self.price_history[symbol] = [config["base_price"]]
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -166,7 +168,7 @@ class DashboardWidget(QWidget):
         self.pnl_card = MetricCard("TODAY'S P&L", "$0.00", "0 trades", "#00ff41")
         metrics_layout.addWidget(self.pnl_card)
 
-        self.drawdown_card = MetricCard("DRAWDOWN", "0.0%", "Max: $2,000", "#ffcc00")
+        self.drawdown_card = MetricCard("EOD DRAWDOWN", "0.0%", "Floor: $48,000", "#ffcc00")
         metrics_layout.addWidget(self.drawdown_card)
 
         self.win_rate_card = MetricCard("WIN RATE", "--", "No trades yet", "#00ccff")
@@ -310,6 +312,30 @@ class DashboardWidget(QWidget):
         position_details.addWidget(self.unrealized_label, 3, 1)
 
         position_layout.addLayout(position_details)
+
+        # MFFU Account Progress
+        mffu_separator = QLabel("--- MFFU PROGRESS ---")
+        mffu_separator.setStyleSheet("color: #ffcc00; font-size: 10px;")
+        mffu_separator.setAlignment(Qt.AlignCenter)
+        position_layout.addWidget(mffu_separator)
+
+        mffu_grid = QGridLayout()
+        mffu_grid.addWidget(QLabel("Profit Target:"), 0, 0)
+        self.target_label = QLabel("$3,000")
+        self.target_label.setStyleSheet("color: #00ff41;")
+        mffu_grid.addWidget(self.target_label, 0, 1)
+
+        mffu_grid.addWidget(QLabel("Progress:"), 1, 0)
+        self.progress_label = QLabel("0.0%")
+        self.progress_label.setStyleSheet("color: #ffcc00;")
+        mffu_grid.addWidget(self.progress_label, 1, 1)
+
+        mffu_grid.addWidget(QLabel("Scale Level:"), 2, 0)
+        self.scale_label = QLabel("2 contracts")
+        self.scale_label.setStyleSheet("color: #00ccff;")
+        mffu_grid.addWidget(self.scale_label, 2, 1)
+
+        position_layout.addLayout(mffu_grid)
         position_layout.addStretch()
         middle_layout.addWidget(position_group, 1)
 
@@ -583,18 +609,99 @@ class DashboardWidget(QWidget):
         scrollbar = self.status_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
 
+    def _compute_ema(self, prices, period):
+        """Compute EMA from price list"""
+        if len(prices) < period:
+            return prices[-1] if prices else 0
+        multiplier = 2 / (period + 1)
+        ema = sum(prices[:period]) / period
+        for price in prices[period:]:
+            ema = (price - ema) * multiplier + ema
+        return ema
+
+    def _compute_rsi(self, prices, period=14):
+        """Compute RSI from price list"""
+        if len(prices) < period + 1:
+            return 50.0  # Neutral when not enough data
+        changes = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+        recent = changes[-period:]
+        gains = [c for c in recent if c > 0]
+        losses = [-c for c in recent if c < 0]
+        avg_gain = sum(gains) / period if gains else 0
+        avg_loss = sum(losses) / period if losses else 0.001
+        rs = avg_gain / avg_loss
+        return 100 - (100 / (1 + rs))
+
+    def _compute_adx_approx(self, prices, period=14):
+        """Approximate ADX from price movement volatility"""
+        if len(prices) < period + 1:
+            return 20.0
+        changes = [abs(prices[i] - prices[i - 1]) for i in range(1, len(prices))]
+        recent = changes[-period:]
+        avg_move = sum(recent) / len(recent) if recent else 0
+        price_range = max(prices[-period:]) - min(prices[-period:])
+        if avg_move == 0:
+            return 15.0
+        # Directional movement ratio: how much of movement is directional
+        net_move = abs(prices[-1] - prices[-period])
+        directionality = net_move / (sum(recent) + 0.001)
+        # Scale to ADX-like range (10-60)
+        adx = 10 + directionality * 50
+        return min(60, max(10, adx))
+
+    def _detect_trend(self, prices):
+        """Detect trend from EMA alignment"""
+        if len(prices) < 21:
+            return "NEUTRAL"
+        ema_fast = self._compute_ema(prices, 9)
+        ema_slow = self._compute_ema(prices, 21)
+        if ema_fast > ema_slow * 1.001:
+            return "BULLISH"
+        elif ema_fast < ema_slow * 0.999:
+            return "BEARISH"
+        return "NEUTRAL"
+
+    def _simulate_price_step(self, symbol):
+        """Generate next simulated price using random walk with mean reversion"""
+        config = SYMBOL_CONFIG.get(symbol, {})
+        base_price = config.get("base_price", 5000)
+        tick_size = config.get("tick_size", 0.25)
+        old_price = self.simulated_prices.get(symbol, base_price)
+        history = self.price_history.get(symbol, [base_price])
+
+        # Mean-reverting random walk scaled to tick size
+        # Use deterministic-looking variation based on price history length
+        n = len(history)
+        # Simple pseudo-random using price digits and bar count
+        seed_val = (old_price * 1000 + n * 7) % 1000 / 1000.0
+        direction = math.sin(n * 0.3) + math.cos(n * 0.17) * 0.5
+        volatility = tick_size * 4
+        change = direction * volatility
+
+        # Mean reversion toward base price
+        reversion = (base_price - old_price) * 0.02
+        new_price = old_price + change + reversion
+
+        # Snap to tick size
+        new_price = round(new_price / tick_size) * tick_size
+
+        self.simulated_prices[symbol] = new_price
+        history.append(new_price)
+        # Keep last 200 prices for indicator calculation
+        if len(history) > 200:
+            history.pop(0)
+        self.price_history[symbol] = history
+        return new_price
+
     def update_data(self):
-        """Update dashboard with latest data"""
-        # Always update market data, even when not trading
+        """Update dashboard with latest data - all indicators computed from price history"""
         symbol = self.current_symbol
         config = SYMBOL_CONFIG.get(symbol, {})
         base_price = config.get("base_price", 5000)
 
-        # Simulate price movement (different for each symbol)
-        old_price = self.simulated_prices.get(symbol, base_price)
-        change = random.uniform(-2, 2)
-        new_price = old_price + change
-        self.simulated_prices[symbol] = new_price
+        # Simulate price movement
+        new_price = self._simulate_price_step(symbol)
+        prices = self.price_history.get(symbol, [new_price])
 
         # Update price display
         self.price_label.setText(f"${new_price:,.2f}")
@@ -605,26 +712,25 @@ class DashboardWidget(QWidget):
         self.price_change_label.setText(f"{price_change:+.2f} ({change_pct:+.2f}%) | Point: ${config.get('point_value', 5):.2f}")
         self.price_change_label.setStyleSheet(f"color: {change_color}; font-size: 12px;")
 
-        # Update market indicators
-        trend = random.choice(["BULLISH", "BEARISH", "NEUTRAL"])
+        # Compute indicators from price history
+        trend = self._detect_trend(prices)
         trend_colors = {"BULLISH": "#00ff41", "BEARISH": "#ff4444", "NEUTRAL": "#ffcc00"}
         self.trend_label.setText(trend)
         self.trend_label.setStyleSheet(f"color: {trend_colors[trend]};")
 
-        adx = random.uniform(15, 45)
+        adx = self._compute_adx_approx(prices)
         self.adx_label.setText(f"{adx:.1f}")
         adx_color = "#00ff41" if adx > 25 else "#ffcc00" if adx > 20 else "#ff4444"
         self.adx_label.setStyleSheet(f"color: {adx_color};")
 
-        rsi = random.uniform(30, 70)
+        rsi = self._compute_rsi(prices)
         self.rsi_label.setText(f"{rsi:.1f}")
         rsi_color = "#ff4444" if rsi > 70 else "#ff4444" if rsi < 30 else "#00ff41"
         self.rsi_label.setStyleSheet(f"color: {rsi_color};")
 
-        sentiment = random.choice(["Bullish", "Bearish", "Neutral"])
-        sent_colors = {"Bullish": "#00ff41", "Bearish": "#ff4444", "Neutral": "#ffcc00"}
-        self.sentiment_label.setText(sentiment)
-        self.sentiment_label.setStyleSheet(f"color: {sent_colors[sentiment]};")
+        # Sentiment comes from news feed if available, otherwise show as N/A
+        self.sentiment_label.setText("N/A")
+        self.sentiment_label.setStyleSheet("color: #666;")
 
         # If actively trading, analyze signals
         if self.trading_active and not self.emergency_stopped:
@@ -714,17 +820,30 @@ class DashboardWidget(QWidget):
             assessment['signal_checks'].append(f"[FAIL] RSI Extreme: {rsi:.1f} outside 30-70 range")
             assessment['reasons'].append(f"RSI at extreme ({rsi:.1f}) - waiting for normalization")
 
-        # Check 4: Pullback to EMA zone (simulated)
-        pullback_detected = random.random() < 0.3
-        if pullback_detected and trend != "NEUTRAL":
+        # Check 4: Pullback to EMA zone (computed from price history)
+        prices = self.price_history.get(self.current_symbol, [])
+        pullback_detected = False
+        if len(prices) >= 21 and trend != "NEUTRAL":
+            ema_fast = self._compute_ema(prices, 9)
+            ema_slow = self._compute_ema(prices, 21)
+            # Pullback: price is near the fast EMA (within 0.3% of EMA)
+            ema_dist = abs(price - ema_fast) / ema_fast if ema_fast > 0 else 1
+            pullback_detected = ema_dist < 0.003
+        if pullback_detected:
             signal_score += 1
             assessment['signal_checks'].append("[PASS] Pullback: Price near EMA entry zone")
         else:
             assessment['signal_checks'].append("[FAIL] Pullback: Price not at optimal entry level")
             assessment['reasons'].append("Waiting for pullback to EMA zone for entry")
 
-        # Check 5: Risk/Reward ratio
-        rr_ok = random.random() < 0.5
+        # Check 5: Risk/Reward ratio (based on ATR-like volatility)
+        rr_ok = False
+        if len(prices) >= 15:
+            recent_changes = [abs(prices[i] - prices[i - 1]) for i in range(max(1, len(prices) - 14), len(prices))]
+            avg_range = sum(recent_changes) / len(recent_changes) if recent_changes else 0
+            # R/R is favorable if trend strength (ADX) supports a 1.5:1 move
+            # With stop at 1.5x ATR and target at 2.5x ATR = 1.67:1 R/R
+            rr_ok = adx >= 22 and avg_range > 0
         if rr_ok:
             signal_score += 1
             assessment['signal_checks'].append("[PASS] Risk/Reward: >= 1.5:1 ratio achievable")
@@ -790,7 +909,7 @@ class DashboardWidget(QWidget):
         self.update_pnl()
 
     def update_pnl(self):
-        """Update P&L display"""
+        """Update P&L display and MFFU progress"""
         self.total_pnl = sum(t.get('pnl', 0) for t in self.trades)
         color = "#00ff41" if self.total_pnl >= 0 else "#ff4444"
         self.pnl_card.set_value(f"${self.total_pnl:,.2f}", color)
@@ -802,3 +921,30 @@ class DashboardWidget(QWidget):
             win_rate = (wins / len(self.trades)) * 100
             self.win_rate_card.set_value(f"{win_rate:.1f}%")
             self.win_rate_card.set_subtitle(f"{wins}W / {len(self.trades) - wins}L")
+
+        # Update MFFU progress
+        profit_target = 3000  # Starter tier default
+        progress = (self.total_pnl / profit_target) * 100 if profit_target > 0 else 0
+        progress = max(0, progress)
+        prog_color = "#00ff41" if progress >= 100 else "#ffcc00"
+        self.progress_label.setText(f"{progress:.1f}%")
+        self.progress_label.setStyleSheet(f"color: {prog_color};")
+
+        # Update scaling level based on profit
+        if self.total_pnl >= 2000:
+            self.scale_label.setText("5 contracts (max)")
+        elif self.total_pnl >= 1500:
+            self.scale_label.setText("4 contracts")
+        elif self.total_pnl >= 1000:
+            self.scale_label.setText("3 contracts")
+        else:
+            self.scale_label.setText("2 contracts")
+
+        # Update drawdown info
+        starting_balance = 50000
+        current_balance = starting_balance + self.total_pnl
+        dd_floor = starting_balance - 2000  # Starter tier MLL
+        dd_pct = ((current_balance - dd_floor) / starting_balance) * 100 if starting_balance > 0 else 0
+        dd_color = "#00ff41" if dd_pct > 2 else "#ffcc00" if dd_pct > 1 else "#ff4444"
+        self.drawdown_card.set_value(f"${current_balance - dd_floor:,.0f}", dd_color)
+        self.drawdown_card.set_subtitle(f"Floor: ${dd_floor:,.0f}")

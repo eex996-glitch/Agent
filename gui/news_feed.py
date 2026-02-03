@@ -12,7 +12,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread
 from PyQt5.QtGui import QFont
 from datetime import datetime, timedelta
-import random
 
 
 class NewsItem(QFrame):
@@ -354,16 +353,70 @@ class SentimentFactorsWidget(QFrame):
             self.factors_layout.addWidget(frame, row, col)
 
     def update_factors(self, news_items):
-        """Update factors based on news analysis"""
-        # Simulate factor analysis (in real app, would analyze actual news)
-        factors = {
-            "Fed Policy": random.choice(["Bullish", "Bearish", "Neutral"]),
-            "Earnings": random.choice(["Bullish", "Bearish", "Neutral"]),
-            "Economic Data": random.choice(["Bullish", "Bearish", "Neutral"]),
-            "Geopolitical": random.choice(["Risk-On", "Risk-Off", "Neutral"]),
-            "Technical": random.choice(["Bullish", "Bearish", "Neutral"]),
-            "Volume/Flow": random.choice(["Buying", "Selling", "Mixed"]),
+        """Update factors based on actual news content analysis"""
+        # Keyword-based factor extraction from news headlines
+        factor_keywords = {
+            "Fed Policy": {
+                "bullish": ["rate pause", "rate cut", "dovish", "easing"],
+                "bearish": ["rate hike", "hawkish", "tightening", "inflation"],
+            },
+            "Earnings": {
+                "bullish": ["earnings exceed", "beat expectations", "revenue growth", "stock jumps"],
+                "bearish": ["earnings miss", "revenue decline", "profit warning", "stock falls"],
+            },
+            "Economic Data": {
+                "bullish": ["jobs growth", "gdp growth", "consumer confidence"],
+                "bearish": ["contraction", "unemployment", "recession", "slowdown"],
+            },
+            "Geopolitical": {
+                "risk_on": ["trade deal", "peace", "stability"],
+                "risk_off": ["supply concerns", "tensions", "conflict", "sanctions"],
+            },
+            "Technical": {
+                "bullish": ["rise", "gains", "rally", "surge", "climb"],
+                "bearish": ["fall", "decline", "drop", "plunge", "sell-off"],
+            },
+            "Volume/Flow": {
+                "buying": ["buying", "inflow", "demand", "accumulation"],
+                "selling": ["selling", "outflow", "liquidation"],
+            },
         }
+
+        # Scan all headlines for keyword matches
+        all_text = " ".join(n.get("headline", "").lower() for n in news_items)
+
+        factors = {}
+        for factor_name, keywords in factor_keywords.items():
+            score = 0
+            for category, words in keywords.items():
+                for word in words:
+                    if word in all_text:
+                        if category in ("bullish", "risk_on", "buying"):
+                            score += 1
+                        else:
+                            score -= 1
+
+            if factor_name == "Geopolitical":
+                if score > 0:
+                    factors[factor_name] = "Risk-On"
+                elif score < 0:
+                    factors[factor_name] = "Risk-Off"
+                else:
+                    factors[factor_name] = "Neutral"
+            elif factor_name == "Volume/Flow":
+                if score > 0:
+                    factors[factor_name] = "Buying"
+                elif score < 0:
+                    factors[factor_name] = "Selling"
+                else:
+                    factors[factor_name] = "Mixed"
+            else:
+                if score > 0:
+                    factors[factor_name] = "Bullish"
+                elif score < 0:
+                    factors[factor_name] = "Bearish"
+                else:
+                    factors[factor_name] = "Neutral"
 
         colors = {
             "Bullish": "#00ff41",
@@ -553,9 +606,8 @@ class NewsFeedWidget(QWidget):
             },
         ]
 
-        # Add some randomization for demo
-        random.shuffle(sample_news)
-        self.news_items = sample_news[:5]
+        # Display all sample news items (in production, API would provide fresh data)
+        self.news_items = sample_news
 
         self.display_news()
         self.calculate_sentiment()
