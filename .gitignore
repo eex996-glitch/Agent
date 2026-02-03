@@ -37,9 +37,12 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs (runtime signal logs, not tracked)
 *.log
 logs/signal_log_*.jsonl
+
+# Tournament results are tracked (committed to repo)
+!logs/tournament_results.json
 
 # Local configuration
 .env.local
