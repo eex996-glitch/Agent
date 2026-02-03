@@ -14,14 +14,74 @@ from PyQt5.QtGui import QFont, QColor
 from datetime import datetime
 import random
 
-# Symbol configuration with realistic price ranges
+# MFFU (MyFundedFutures) available instruments with current 2026 contracts
+# Front-month contracts roll quarterly: H=Mar, M=Jun, U=Sep, Z=Dec
 SYMBOL_CONFIG = {
-    "MESZ4": {"base_price": 5250.00, "point_value": 5.0, "tick_size": 0.25, "name": "Micro E-mini S&P 500 Dec 2024"},
-    "MESH5": {"base_price": 5280.00, "point_value": 5.0, "tick_size": 0.25, "name": "Micro E-mini S&P 500 Mar 2025"},
-    "ESZ4": {"base_price": 5250.00, "point_value": 50.0, "tick_size": 0.25, "name": "E-mini S&P 500 Dec 2024"},
-    "ESH5": {"base_price": 5280.00, "point_value": 50.0, "tick_size": 0.25, "name": "E-mini S&P 500 Mar 2025"},
-    "NQZ4": {"base_price": 18500.00, "point_value": 20.0, "tick_size": 0.25, "name": "E-mini Nasdaq 100 Dec 2024"},
-    "NQH5": {"base_price": 18600.00, "point_value": 20.0, "tick_size": 0.25, "name": "E-mini Nasdaq 100 Mar 2025"},
+    # --- Equity Index Futures ---
+    # E-mini S&P 500
+    "ESH6":  {"base_price": 6050.00, "point_value": 50.0,  "tick_size": 0.25,  "name": "E-mini S&P 500 Mar 2026"},
+    "ESM6":  {"base_price": 6080.00, "point_value": 50.0,  "tick_size": 0.25,  "name": "E-mini S&P 500 Jun 2026"},
+    # Micro E-mini S&P 500
+    "MESH6": {"base_price": 6050.00, "point_value": 5.0,   "tick_size": 0.25,  "name": "Micro E-mini S&P 500 Mar 2026"},
+    "MESM6": {"base_price": 6080.00, "point_value": 5.0,   "tick_size": 0.25,  "name": "Micro E-mini S&P 500 Jun 2026"},
+    # E-mini Nasdaq 100
+    "NQH6":  {"base_price": 21500.00, "point_value": 20.0, "tick_size": 0.25,  "name": "E-mini Nasdaq 100 Mar 2026"},
+    "NQM6":  {"base_price": 21600.00, "point_value": 20.0, "tick_size": 0.25,  "name": "E-mini Nasdaq 100 Jun 2026"},
+    # Micro E-mini Nasdaq 100
+    "MNQH6": {"base_price": 21500.00, "point_value": 2.0,  "tick_size": 0.25,  "name": "Micro E-mini Nasdaq 100 Mar 2026"},
+    "MNQM6": {"base_price": 21600.00, "point_value": 2.0,  "tick_size": 0.25,  "name": "Micro E-mini Nasdaq 100 Jun 2026"},
+    # E-mini Russell 2000
+    "RTYH6": {"base_price": 2280.00,  "point_value": 50.0, "tick_size": 0.10,  "name": "E-mini Russell 2000 Mar 2026"},
+    "RTYM6": {"base_price": 2290.00,  "point_value": 50.0, "tick_size": 0.10,  "name": "E-mini Russell 2000 Jun 2026"},
+    # Micro E-mini Russell 2000
+    "M2KH6": {"base_price": 2280.00,  "point_value": 5.0,  "tick_size": 0.10,  "name": "Micro E-mini Russell 2000 Mar 2026"},
+    "M2KM6": {"base_price": 2290.00,  "point_value": 5.0,  "tick_size": 0.10,  "name": "Micro E-mini Russell 2000 Jun 2026"},
+    # E-mini Dow Jones
+    "YMH6":  {"base_price": 44200.00, "point_value": 5.0,  "tick_size": 1.0,   "name": "E-mini Dow Jones Mar 2026"},
+    "YMM6":  {"base_price": 44300.00, "point_value": 5.0,  "tick_size": 1.0,   "name": "E-mini Dow Jones Jun 2026"},
+    # Micro E-mini Dow Jones
+    "MYMH6": {"base_price": 44200.00, "point_value": 0.50, "tick_size": 1.0,   "name": "Micro E-mini Dow Jones Mar 2026"},
+    "MYMM6": {"base_price": 44300.00, "point_value": 0.50, "tick_size": 1.0,   "name": "Micro E-mini Dow Jones Jun 2026"},
+    # --- Energy Futures ---
+    # Crude Oil
+    "CLH6":  {"base_price": 72.50,    "point_value": 1000.0, "tick_size": 0.01, "name": "Crude Oil Mar 2026"},
+    "CLM6":  {"base_price": 73.00,    "point_value": 1000.0, "tick_size": 0.01, "name": "Crude Oil Jun 2026"},
+    # Micro Crude Oil
+    "MCLH6": {"base_price": 72.50,    "point_value": 100.0,  "tick_size": 0.01, "name": "Micro Crude Oil Mar 2026"},
+    "MCLM6": {"base_price": 73.00,    "point_value": 100.0,  "tick_size": 0.01, "name": "Micro Crude Oil Jun 2026"},
+    # Natural Gas
+    "NGH6":  {"base_price": 3.20,     "point_value": 10000.0, "tick_size": 0.001, "name": "Natural Gas Mar 2026"},
+    "NGM6":  {"base_price": 3.25,     "point_value": 10000.0, "tick_size": 0.001, "name": "Natural Gas Jun 2026"},
+    # --- Metals Futures ---
+    # Gold
+    "GCH6":  {"base_price": 2680.00,  "point_value": 100.0,  "tick_size": 0.10, "name": "Gold Mar 2026"},
+    "GCM6":  {"base_price": 2690.00,  "point_value": 100.0,  "tick_size": 0.10, "name": "Gold Jun 2026"},
+    # Micro Gold
+    "MGCH6": {"base_price": 2680.00,  "point_value": 10.0,   "tick_size": 0.10, "name": "Micro Gold Mar 2026"},
+    "MGCM6": {"base_price": 2690.00,  "point_value": 10.0,   "tick_size": 0.10, "name": "Micro Gold Jun 2026"},
+    # Silver
+    "SIH6":  {"base_price": 31.50,    "point_value": 5000.0, "tick_size": 0.005, "name": "Silver Mar 2026"},
+    # --- Treasury Futures ---
+    # 10-Year T-Note
+    "ZNH6":  {"base_price": 110.50,   "point_value": 1000.0, "tick_size": 0.015625, "name": "10-Year T-Note Mar 2026"},
+    # 30-Year T-Bond
+    "ZBH6":  {"base_price": 119.00,   "point_value": 1000.0, "tick_size": 0.03125,  "name": "30-Year T-Bond Mar 2026"},
+    # 5-Year T-Note
+    "ZFH6":  {"base_price": 108.00,   "point_value": 1000.0, "tick_size": 0.0078125, "name": "5-Year T-Note Mar 2026"},
+    # 2-Year T-Note
+    "ZTH6":  {"base_price": 103.50,   "point_value": 2000.0, "tick_size": 0.0078125, "name": "2-Year T-Note Mar 2026"},
+    # --- Currency Futures ---
+    # Euro FX
+    "6EH6":  {"base_price": 1.0850,   "point_value": 125000.0, "tick_size": 0.00005, "name": "Euro FX Mar 2026"},
+    # Micro EUR/USD
+    "M6EH6": {"base_price": 1.0850,   "point_value": 12500.0,  "tick_size": 0.0001,  "name": "Micro EUR/USD Mar 2026"},
+    # --- Agricultural Futures ---
+    # Corn
+    "ZCH6":  {"base_price": 4.85,     "point_value": 50.0,   "tick_size": 0.0025, "name": "Corn Mar 2026"},
+    # Soybeans
+    "ZSH6":  {"base_price": 13.20,    "point_value": 50.0,   "tick_size": 0.0025, "name": "Soybeans Mar 2026"},
+    # Wheat
+    "ZWH6":  {"base_price": 6.10,     "point_value": 50.0,   "tick_size": 0.0025, "name": "Wheat Mar 2026"},
 }
 
 
@@ -82,7 +142,7 @@ class DashboardWidget(QWidget):
         self.emergency_stopped = False
         self.trades = []
         self.total_pnl = 0.0
-        self.current_symbol = "MESZ4"
+        self.current_symbol = "MESH6"
         self.simulated_prices = {}  # Track simulated prices per symbol
         self.signal_wait_reasons = []
         self.bars_analyzed = 0
@@ -147,7 +207,7 @@ class DashboardWidget(QWidget):
         controls_layout.addLayout(symbol_layout)
 
         # Symbol info label
-        self.symbol_info_label = QLabel(SYMBOL_CONFIG["MESZ4"]["name"])
+        self.symbol_info_label = QLabel(SYMBOL_CONFIG["MESH6"]["name"])
         self.symbol_info_label.setStyleSheet("color: #888; font-size: 10px;")
         self.symbol_info_label.setWordWrap(True)
         controls_layout.addWidget(self.symbol_info_label)
@@ -572,41 +632,141 @@ class DashboardWidget(QWidget):
             self.analyze_trading_conditions(trend, adx, rsi, new_price)
 
     def analyze_trading_conditions(self, trend, adx, rsi, price):
-        """Analyze conditions and provide feedback on why no trade"""
-        reasons = []
-        can_trade = True
+        """
+        Analyze market conditions, identify patterns, assess signals,
+        and log the assessment to both the status panel and log files.
+        """
+        config = SYMBOL_CONFIG.get(self.current_symbol, {})
+        assessment = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': self.current_symbol,
+            'price': price,
+            'bar': self.bars_analyzed,
+            'indicators': {'trend': trend, 'adx': round(adx, 1), 'rsi': round(rsi, 1)},
+            'patterns': [],
+            'signal_checks': [],
+            'decision': 'NO_TRADE',
+            'reasons': []
+        }
 
-        # Check ADX (trend strength)
-        if adx < 20:
-            reasons.append(f"ADX too low ({adx:.1f} < 20) - weak trend")
-            can_trade = False
-        elif adx < 25:
-            reasons.append(f"ADX borderline ({adx:.1f}) - waiting for stronger trend")
+        # --- Pattern Detection ---
+        # EMA alignment check
+        if trend == "BULLISH":
+            assessment['patterns'].append("EMA_BULLISH_ALIGNMENT: Fast EMA > Slow EMA > 200 EMA")
+        elif trend == "BEARISH":
+            assessment['patterns'].append("EMA_BEARISH_ALIGNMENT: Fast EMA < Slow EMA < 200 EMA")
+        else:
+            assessment['patterns'].append("EMA_MIXED: No clear EMA alignment detected")
 
-        # Check RSI (overbought/oversold)
+        # ADX trend strength pattern
+        if adx > 40:
+            assessment['patterns'].append(f"STRONG_TREND: ADX={adx:.1f} indicates very strong trend")
+        elif adx > 25:
+            assessment['patterns'].append(f"MODERATE_TREND: ADX={adx:.1f} confirms trending market")
+        elif adx > 20:
+            assessment['patterns'].append(f"WEAK_TREND: ADX={adx:.1f} trend developing")
+        else:
+            assessment['patterns'].append(f"RANGING: ADX={adx:.1f} market is choppy/sideways")
+
+        # RSI pattern detection
         if rsi > 70:
-            reasons.append(f"RSI overbought ({rsi:.1f}) - risky for longs")
+            assessment['patterns'].append(f"RSI_OVERBOUGHT: RSI={rsi:.1f} potential reversal zone")
+        elif rsi > 60:
+            assessment['patterns'].append(f"RSI_BULLISH_MOMENTUM: RSI={rsi:.1f} strong upward momentum")
         elif rsi < 30:
-            reasons.append(f"RSI oversold ({rsi:.1f}) - risky for shorts")
+            assessment['patterns'].append(f"RSI_OVERSOLD: RSI={rsi:.1f} potential reversal zone")
+        elif rsi < 40:
+            assessment['patterns'].append(f"RSI_BEARISH_MOMENTUM: RSI={rsi:.1f} strong downward momentum")
+        else:
+            assessment['patterns'].append(f"RSI_NEUTRAL: RSI={rsi:.1f} no extreme readings")
 
-        # Check trend alignment
-        if trend == "NEUTRAL":
-            reasons.append("No clear trend direction")
-            can_trade = False
+        # Momentum divergence simulation
+        if trend == "BULLISH" and rsi < 45:
+            assessment['patterns'].append("BEARISH_DIVERGENCE: Price trending up but RSI weakening")
+        elif trend == "BEARISH" and rsi > 55:
+            assessment['patterns'].append("BULLISH_DIVERGENCE: Price trending down but RSI strengthening")
 
-        # Simulate occasional signal generation
-        if can_trade and random.random() < 0.05:  # 5% chance per update
+        # --- Signal Quality Checks ---
+        signal_score = 0
+        max_score = 5
+
+        # Check 1: Trend direction
+        if trend in ["BULLISH", "BEARISH"]:
+            signal_score += 1
+            assessment['signal_checks'].append(f"[PASS] Trend Direction: {trend}")
+        else:
+            assessment['signal_checks'].append("[FAIL] Trend Direction: No clear trend")
+            assessment['reasons'].append("No clear trend direction identified")
+
+        # Check 2: Trend strength (ADX)
+        if adx >= 25:
+            signal_score += 1
+            assessment['signal_checks'].append(f"[PASS] Trend Strength: ADX={adx:.1f} >= 25")
+        else:
+            assessment['signal_checks'].append(f"[FAIL] Trend Strength: ADX={adx:.1f} < 25 threshold")
+            assessment['reasons'].append(f"ADX too low ({adx:.1f}) - need >= 25 for confirmed trend")
+
+        # Check 3: RSI not extreme
+        if 30 <= rsi <= 70:
+            signal_score += 1
+            assessment['signal_checks'].append(f"[PASS] RSI Range: {rsi:.1f} within tradeable zone")
+        else:
+            assessment['signal_checks'].append(f"[FAIL] RSI Extreme: {rsi:.1f} outside 30-70 range")
+            assessment['reasons'].append(f"RSI at extreme ({rsi:.1f}) - waiting for normalization")
+
+        # Check 4: Pullback to EMA zone (simulated)
+        pullback_detected = random.random() < 0.3
+        if pullback_detected and trend != "NEUTRAL":
+            signal_score += 1
+            assessment['signal_checks'].append("[PASS] Pullback: Price near EMA entry zone")
+        else:
+            assessment['signal_checks'].append("[FAIL] Pullback: Price not at optimal entry level")
+            assessment['reasons'].append("Waiting for pullback to EMA zone for entry")
+
+        # Check 5: Risk/Reward ratio
+        rr_ok = random.random() < 0.5
+        if rr_ok:
+            signal_score += 1
+            assessment['signal_checks'].append("[PASS] Risk/Reward: >= 1.5:1 ratio achievable")
+        else:
+            assessment['signal_checks'].append("[FAIL] Risk/Reward: < 1.5:1 - poor reward setup")
+            assessment['reasons'].append("Risk/reward ratio below 1.5:1 minimum")
+
+        # --- Decision ---
+        if signal_score >= 4:
             signal_type = "LONG" if trend == "BULLISH" else "SHORT"
-            self.add_status_message(f"Signal generated: {signal_type} at ${price:,.2f}")
-            self.add_status_message(f"Conditions: Trend={trend}, ADX={adx:.1f}, RSI={rsi:.1f}")
-            # In a real system, this would place an order
-            self.add_status_message("(Paper mode - no real order placed)")
+            assessment['decision'] = f"SIGNAL_{signal_type}"
 
-        # Update status periodically (every 10 bars)
-        if self.bars_analyzed % 10 == 0:
-            self.add_status_message(f"Bars analyzed: {self.bars_analyzed}")
-            if reasons:
-                self.add_status_message(f"Waiting: {reasons[0]}")
+            self.add_status_message(f"=== SIGNAL: {signal_type} at ${price:,.2f} ===")
+            self.add_status_message(f"  Quality: {signal_score}/{max_score} checks passed")
+            for p in assessment['patterns'][:2]:
+                self.add_status_message(f"  Pattern: {p}")
+            self.add_status_message(f"  (Paper mode - simulated execution)")
+        elif self.bars_analyzed % 5 == 0:
+            # Log periodic assessment
+            self.add_status_message(f"--- Signal Assessment (Bar #{self.bars_analyzed}) ---")
+            self.add_status_message(f"  Score: {signal_score}/{max_score} | Need 4+ to trade")
+            for check in assessment['signal_checks']:
+                self.add_status_message(f"  {check}")
+            if assessment['reasons']:
+                self.add_status_message(f"  Waiting: {assessment['reasons'][0]}")
+
+        # --- Write to log file ---
+        self._log_signal_assessment(assessment)
+
+    def _log_signal_assessment(self, assessment):
+        """Write signal assessment to log file for learning"""
+        import json, os
+
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+
+        log_file = os.path.join(log_dir, f"signal_log_{datetime.now().strftime('%Y%m%d')}.jsonl")
+        try:
+            with open(log_file, 'a') as f:
+                f.write(json.dumps(assessment) + '\n')
+        except Exception:
+            pass  # Don't crash the GUI on log write failure
 
     def add_trade(self, trade):
         """Add a trade to the history"""

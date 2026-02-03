@@ -401,7 +401,7 @@ class BacktestEngine:
         self.current_balance = self.config.starting_balance
         self.position = None
         self.trades = []
-        self.equity_curve = [self.config.starting_balance]
+        self.equity_curve = []
         self.daily_pnl = {}
         
         # Initialize risk manager
@@ -505,6 +505,10 @@ class BacktestEngine:
         start_idx: int
     ) -> BacktestResult:
         """Calculate backtest performance metrics"""
+        # Ensure equity curve and index have matching lengths
+        available_index = data.index[start_idx:]
+        eq_len = min(len(self.equity_curve), len(available_index))
+
         result = BacktestResult(
             config=self.config,
             strategy_name=self.strategy.name,
@@ -512,8 +516,8 @@ class BacktestEngine:
             end_date=data.index[-1],
             trades=self.trades,
             equity_curve=pd.Series(
-                self.equity_curve,
-                index=data.index[start_idx:start_idx+len(self.equity_curve)]
+                self.equity_curve[:eq_len],
+                index=available_index[:eq_len]
             )
         )
         
