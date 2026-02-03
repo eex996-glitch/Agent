@@ -39,35 +39,15 @@ class BacktestWorker(QThread):
             import numpy as np
             from backtest.engine import BacktestEngine, BacktestConfig
             from strategy.tournament import run_tournament, generate_realistic_data
-
-            self.progress.emit("Initializing strategy tournament...")
-
-            n_bars = self.config.get('num_bars', 2000)
-
-            # Run tournament (tests all strategies, picks the best)
-            tournament_result = run_tournament(
-                starting_balance=self.config.get('starting_balance', 50000),
-                max_loss_limit=self.config.get('max_loss_limit', 2000),
-                point_value=self.config.get('point_value', 5.0),
-                symbol=self.config.get('symbol', 'MES'),
-                n_bars=n_bars,
-                progress_callback=self.progress.emit,
-            )
-
-            self.progress.emit("Selecting best strategy and compiling results...")
-
-            # Get the best strategy's detailed results
-            best_score = tournament_result.scores[0] if tournament_result.scores else None
-
-            if best_score is None:
-                self.error.emit("No strategies produced results")
-                return
-
-            # Now re-run only the best strategy for detailed trade data
             from strategy.trend_following import TrendFollowingStrategy
             from strategy.mean_reversion import MeanReversionStrategy
             from strategy.breakout import BreakoutStrategy
             from strategy.adaptive import AdaptiveStrategy
+
+            n_bars = self.config.get('num_bars', 2000)
+            seed = self.config.get('seed', 42)
+            vol_mult = self.config.get('volatility_mult', 1.0)
+            selected_strategy = self.config.get('strategy', None)
 
             strategy_map = {
                 'TrendFollowing': lambda: TrendFollowingStrategy(
@@ -94,16 +74,39 @@ class BacktestWorker(QThread):
                             'rsi_oversold': 35, 'rsi_overbought': 65}),
             }
 
-            best_name = best_score.name
+            tournament_result = None
+
+            if selected_strategy is None:
+                # Full tournament mode
+                self.progress.emit("Initializing strategy tournament...")
+                tournament_result = run_tournament(
+                    starting_balance=self.config.get('starting_balance', 50000),
+                    max_loss_limit=self.config.get('max_loss_limit', 2000),
+                    point_value=self.config.get('point_value', 5.0),
+                    symbol=self.config.get('symbol', 'MES'),
+                    n_bars=n_bars,
+                    progress_callback=self.progress.emit,
+                    seed=seed,
+                    volatility_mult=vol_mult,
+                )
+
+                best_score = tournament_result.scores[0] if tournament_result.scores else None
+                if best_score is None:
+                    self.error.emit("No strategies produced results")
+                    return
+                best_name = best_score.name
+            else:
+                best_name = selected_strategy
+
+            self.progress.emit(f"Running {best_name} for detailed results...")
+
             strategy_factory = strategy_map.get(best_name)
             if strategy_factory is None:
-                # Default fallback
                 strategy_factory = lambda: AdaptiveStrategy(name="Adaptive")
 
-            self.progress.emit(f"Re-running best strategy ({best_name}) for detailed results...")
-
             strategy = strategy_factory()
-            data = generate_realistic_data(n_bars)
+            data = generate_realistic_data(n_bars, seed=seed,
+                                           volatility_mult=vol_mult)
             prepared = strategy.prepare_data(data.copy())
 
             bt_config = BacktestConfig(
@@ -121,9 +124,11 @@ class BacktestWorker(QThread):
 
             self.progress.emit("Calculating results...")
 
-            # Build result dict with tournament context
+            suffix = " (Tournament Winner)" if tournament_result else ""
+
+            # Build result dict
             result_dict = {
-                'strategy_name': f"{result.strategy_name} (Tournament Winner)",
+                'strategy_name': f"{result.strategy_name}{suffix}",
                 'start_date': str(result.start_date),
                 'end_date': str(result.end_date),
                 'starting_balance': bt_config.starting_balance,
@@ -146,8 +151,6 @@ class BacktestWorker(QThread):
                 'best_day': result.best_day,
                 'worst_day': result.worst_day,
                 'consistency_score': result.consistency_score,
-                'tournament_rankings': tournament_result.rankings,
-                'tournament_scores': [s.to_dict() for s in tournament_result.scores],
                 'trades': [
                     {
                         'entry_time': str(t.entry_time),
@@ -163,7 +166,12 @@ class BacktestWorker(QThread):
                 ]
             }
 
-            self.progress.emit("Tournament backtest complete!")
+            if tournament_result:
+                result_dict['tournament_rankings'] = tournament_result.rankings
+                result_dict['tournament_scores'] = [
+                    s.to_dict() for s in tournament_result.scores]
+
+            self.progress.emit("Backtest complete!")
             self.finished.emit(result_dict)
 
         except Exception as e:
@@ -246,53 +254,111 @@ class BacktestDialog(QDialog):
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
-        # Configuration section
-        config_group = QGroupBox("Backtest Configuration")
-        config_layout = QGridLayout(config_group)
+        # ── Account & Symbol Configuration ────────────────────────────────
+        acct_group = QGroupBox("Account & Symbol")
+        acct_layout = QGridLayout(acct_group)
+
+        # MFFU Account Tier
+        acct_layout.addWidget(QLabel("MFFU Tier:"), 0, 0)
+        self.tier_combo = QComboBox()
+        self.tier_combo.addItems(["Starter ($50K)", "Standard ($100K)", "Premium ($150K)"])
+        self.tier_combo.currentIndexChanged.connect(self._on_tier_changed)
+        acct_layout.addWidget(self.tier_combo, 0, 1)
+
+        # Max loss limit (set by tier, read-only display)
+        acct_layout.addWidget(QLabel("Max Loss (EOD):"), 0, 2)
+        self.max_loss_label = QLabel("$2,000")
+        self.max_loss_label.setStyleSheet("color: #ff4444; font-weight: bold;")
+        acct_layout.addWidget(self.max_loss_label, 0, 3)
 
         # Starting balance
-        config_layout.addWidget(QLabel("Starting Balance:"), 0, 0)
+        acct_layout.addWidget(QLabel("Starting Balance:"), 1, 0)
         self.balance_spin = QDoubleSpinBox()
         self.balance_spin.setRange(1000, 1000000)
         self.balance_spin.setValue(50000)
         self.balance_spin.setPrefix("$")
-        config_layout.addWidget(self.balance_spin, 0, 1)
+        acct_layout.addWidget(self.balance_spin, 1, 1)
 
-        # Symbol
-        config_layout.addWidget(QLabel("Symbol:"), 0, 2)
+        # Symbol (all MFFU instruments grouped by category)
+        acct_layout.addWidget(QLabel("Symbol:"), 1, 2)
         self.symbol_combo = QComboBox()
-        self.symbol_combo.addItems(["MES", "ES", "NQ", "MNQ"])
-        config_layout.addWidget(self.symbol_combo, 0, 3)
+        symbol_groups = [
+            # Equity Micro
+            "MESH6", "MESM6", "MNQH6", "MNQM6", "M2KH6", "M2KM6", "MYMH6", "MYMM6",
+            # Equity Full-size
+            "ESH6", "ESM6", "NQH6", "NQM6", "RTYH6", "RTYM6", "YMH6", "YMM6",
+            # Energy
+            "CLH6", "CLM6", "MCLH6", "MCLM6", "NGH6", "NGM6",
+            # Metals
+            "GCH6", "GCM6", "MGCH6", "MGCM6", "SIH6",
+            # Treasuries
+            "ZNH6", "ZBH6", "ZFH6", "ZTH6",
+            # Currency
+            "6EH6", "M6EH6",
+            # Agriculture
+            "ZCH6", "ZSH6", "ZWH6",
+        ]
+        self.symbol_combo.addItems(symbol_groups)
+        acct_layout.addWidget(self.symbol_combo, 1, 3)
 
-        # MFFU Account Tier
-        config_layout.addWidget(QLabel("MFFU Tier:"), 1, 0)
-        self.tier_combo = QComboBox()
-        self.tier_combo.addItems(["Starter ($50K)", "Standard ($100K)", "Premium ($150K)"])
-        self.tier_combo.currentIndexChanged.connect(self._on_tier_changed)
-        config_layout.addWidget(self.tier_combo, 1, 1)
+        layout.addWidget(acct_group)
 
-        # Max loss limit (set by tier, read-only display)
-        config_layout.addWidget(QLabel("Max Loss (EOD):"), 1, 2)
-        self.max_loss_label = QLabel("$2,000")
-        self.max_loss_label.setStyleSheet("color: #ff4444; font-weight: bold;")
-        config_layout.addWidget(self.max_loss_label, 1, 3)
+        # ── Strategy & Data Configuration ─────────────────────────────────
+        strat_group = QGroupBox("Strategy & Data")
+        strat_layout = QGridLayout(strat_group)
+
+        # Strategy selection
+        strat_layout.addWidget(QLabel("Strategy:"), 0, 0)
+        self.strategy_combo = QComboBox()
+        self.strategy_combo.addItems([
+            "Tournament (All Strategies)",
+            "TrendFollowing",
+            "TrendFollowing Aggressive",
+            "MeanReversion",
+            "MeanReversion Relaxed",
+            "Breakout",
+            "Adaptive",
+        ])
+        strat_layout.addWidget(self.strategy_combo, 0, 1)
 
         # Risk per trade
-        config_layout.addWidget(QLabel("Risk Per Trade:"), 2, 0)
+        strat_layout.addWidget(QLabel("Risk Per Trade:"), 0, 2)
         self.risk_spin = QDoubleSpinBox()
         self.risk_spin.setRange(0.5, 5.0)
         self.risk_spin.setValue(1.0)
         self.risk_spin.setSuffix("%")
-        config_layout.addWidget(self.risk_spin, 2, 1)
+        strat_layout.addWidget(self.risk_spin, 0, 3)
 
         # Number of bars
-        config_layout.addWidget(QLabel("Bars to Simulate:"), 2, 2)
+        strat_layout.addWidget(QLabel("Bars to Simulate:"), 1, 0)
         self.bars_spin = QSpinBox()
         self.bars_spin.setRange(500, 10000)
         self.bars_spin.setValue(2000)
-        config_layout.addWidget(self.bars_spin, 2, 3)
+        strat_layout.addWidget(self.bars_spin, 1, 1)
 
-        layout.addWidget(config_group)
+        # Data seed for reproducibility
+        strat_layout.addWidget(QLabel("Data Seed:"), 1, 2)
+        self.seed_spin = QSpinBox()
+        self.seed_spin.setRange(1, 99999)
+        self.seed_spin.setValue(42)
+        self.seed_spin.setToolTip("Random seed for data generation (same seed = same data)")
+        strat_layout.addWidget(self.seed_spin, 1, 3)
+
+        # Market volatility preset
+        strat_layout.addWidget(QLabel("Volatility:"), 2, 0)
+        self.volatility_combo = QComboBox()
+        self.volatility_combo.addItems(["Normal", "Low", "High", "Extreme"])
+        self.volatility_combo.setToolTip("Market volatility regime for generated data")
+        strat_layout.addWidget(self.volatility_combo, 2, 1)
+
+        # Max contracts override
+        strat_layout.addWidget(QLabel("Max Contracts:"), 2, 2)
+        self.max_contracts_spin = QSpinBox()
+        self.max_contracts_spin.setRange(1, 15)
+        self.max_contracts_spin.setValue(5)
+        strat_layout.addWidget(self.max_contracts_spin, 2, 3)
+
+        layout.addWidget(strat_group)
 
         # Progress section
         progress_group = QGroupBox("Progress")
@@ -356,6 +422,7 @@ class BacktestDialog(QDialog):
             balance, max_loss, max_contracts, loss_text = tier_settings[index]
             self.balance_spin.setValue(balance)
             self.max_loss_label.setText(loss_text)
+            self.max_contracts_spin.setValue(max_contracts)
 
     def _get_tier_max_loss(self):
         """Get max loss limit for selected tier"""
@@ -369,6 +436,12 @@ class BacktestDialog(QDialog):
         index = self.tier_combo.currentIndex()
         return tier_contracts[index] if 0 <= index < len(tier_contracts) else 5
 
+    def _get_point_value(self, symbol):
+        """Get point value for a symbol"""
+        from gui.dashboard import SYMBOL_CONFIG
+        config = SYMBOL_CONFIG.get(symbol, {})
+        return config.get('point_value', 5.0)
+
     def run_backtest(self):
         """Start the backtest"""
         self.run_btn.setEnabled(False)
@@ -376,14 +449,24 @@ class BacktestDialog(QDialog):
         self.progress_bar.show()
         self.results_text.clear()
 
+        symbol = self.symbol_combo.currentText()
+        strategy_text = self.strategy_combo.currentText()
+        strategy_name = None if strategy_text.startswith("Tournament") else strategy_text.replace(" ", "_")
+
+        vol_map = {"Normal": 1.0, "Low": 0.5, "High": 1.8, "Extreme": 3.0}
+        volatility_mult = vol_map.get(self.volatility_combo.currentText(), 1.0)
+
         config = {
             'starting_balance': self.balance_spin.value(),
-            'symbol': self.symbol_combo.currentText(),
+            'symbol': symbol,
             'max_loss_limit': self._get_tier_max_loss(),
             'risk_per_trade': self.risk_spin.value() / 100,
             'num_bars': self.bars_spin.value(),
-            'max_contracts': self._get_tier_max_contracts(),
-            'point_value': 5.0 if 'M' in self.symbol_combo.currentText() else 50.0
+            'max_contracts': self.max_contracts_spin.value(),
+            'point_value': self._get_point_value(symbol),
+            'strategy': strategy_name,
+            'seed': self.seed_spin.value(),
+            'volatility_mult': volatility_mult,
         }
 
         self.worker = BacktestWorker(config)

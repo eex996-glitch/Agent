@@ -467,6 +467,68 @@ class ModelHealthWidget(QWidget):
 
         layout.addWidget(rankings_frame)
 
+        # ── Futures Recommendations ──────────────────────────────────────
+        rec_frame = QFrame()
+        rec_frame.setStyleSheet("""
+            QFrame {
+                background-color: #16213e;
+                border: 1px solid #3a3a5e;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        rec_layout = QVBoxLayout(rec_frame)
+
+        rec_header = QHBoxLayout()
+        rec_title = QLabel("RECOMMENDED FUTURES")
+        rec_title.setStyleSheet("color: #ffcc00; font-weight: bold;")
+        rec_header.addWidget(rec_title)
+        rec_header.addStretch()
+
+        self.rec_status = QLabel("Run tournament to generate recommendations")
+        self.rec_status.setStyleSheet("color: #666; font-size: 10px;")
+        rec_header.addWidget(self.rec_status)
+        rec_layout.addLayout(rec_header)
+
+        rec_desc = QLabel(
+            "Contracts ranked by expected profitability based on strategy "
+            "confidence, volatility characteristics, and point-value risk."
+        )
+        rec_desc.setStyleSheet("color: #888; font-size: 10px;")
+        rec_desc.setWordWrap(True)
+        rec_layout.addWidget(rec_desc)
+
+        self.rec_table = QTableWidget()
+        self.rec_table.setColumnCount(6)
+        self.rec_table.setHorizontalHeaderLabels([
+            "Contract", "Category", "Point Value",
+            "Confidence", "Risk Level", "Recommendation"
+        ])
+        self.rec_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch)
+        self.rec_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #0f0f1a;
+                color: #eee;
+                border: 1px solid #3a3a5e;
+                gridline-color: #3a3a5e;
+            }
+            QHeaderView::section {
+                background-color: #16213e;
+                color: #ffcc00;
+                padding: 5px;
+                border: 1px solid #3a3a5e;
+                font-weight: bold;
+            }
+            QTableWidget::item { padding: 5px; }
+            QTableWidget::item:selected { background-color: #3a3a5e; }
+        """)
+        self.rec_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.rec_table.setSelectionBehavior(QTableWidget.SelectRows)
+        rec_layout.addWidget(self.rec_table)
+
+        layout.addWidget(rec_frame)
+
         # Equity curve
         chart_frame = QFrame()
         chart_frame.setStyleSheet("""
@@ -743,6 +805,119 @@ class ModelHealthWidget(QWidget):
         # Update chart status
         self.chart_status.setText(f"Best: {best_name}")
         self.chart_status.setStyleSheet("color: #00ff41;")
+
+        # Update futures recommendations
+        self._update_recommendations(data)
+
+    # ── Futures Recommendations Logic ─────────────────────────────────
+
+    # MFFU contracts grouped by category with risk profiles
+    FUTURES_CATALOG = [
+        # (symbol, name, category, point_value, risk_tier)
+        # risk_tier: 1=low (micros), 2=medium, 3=high (full-size/commodities)
+        ("MESH6",  "Micro E-mini S&P 500",       "Equity Index", 5.0,     1),
+        ("MNQH6",  "Micro E-mini Nasdaq 100",     "Equity Index", 2.0,     1),
+        ("M2KH6",  "Micro E-mini Russell 2000",   "Equity Index", 5.0,     1),
+        ("MYMH6",  "Micro E-mini Dow Jones",      "Equity Index", 0.50,    1),
+        ("ESH6",   "E-mini S&P 500",              "Equity Index", 50.0,    3),
+        ("NQH6",   "E-mini Nasdaq 100",           "Equity Index", 20.0,    3),
+        ("RTYH6",  "E-mini Russell 2000",         "Equity Index", 50.0,    3),
+        ("YMH6",   "E-mini Dow Jones",            "Equity Index", 5.0,     2),
+        ("MCLH6",  "Micro Crude Oil",             "Energy",       100.0,   2),
+        ("CLH6",   "Crude Oil",                   "Energy",       1000.0,  3),
+        ("NGH6",   "Natural Gas",                 "Energy",       10000.0, 3),
+        ("MGCH6",  "Micro Gold",                  "Metals",       10.0,    1),
+        ("GCH6",   "Gold",                        "Metals",       100.0,   3),
+        ("SIH6",   "Silver",                      "Metals",       5000.0,  3),
+        ("ZNH6",   "10-Year T-Note",              "Treasuries",   1000.0,  2),
+        ("ZBH6",   "30-Year T-Bond",              "Treasuries",   1000.0,  2),
+        ("ZFH6",   "5-Year T-Note",               "Treasuries",   1000.0,  2),
+        ("M6EH6",  "Micro EUR/USD",               "Currency",     12500.0, 2),
+        ("6EH6",   "Euro FX",                     "Currency",     125000.0,3),
+        ("ZCH6",   "Corn",                        "Agriculture",  50.0,    2),
+        ("ZSH6",   "Soybeans",                    "Agriculture",  50.0,    2),
+        ("ZWH6",   "Wheat",                       "Agriculture",  50.0,    2),
+    ]
+
+    def _update_recommendations(self, data):
+        """Generate futures recommendations from tournament confidence data."""
+        confidence = data.get('confidence_metrics', {})
+        overall_conf = confidence.get('overall', 50)
+        best_wr = confidence.get('best_win_rate', 50)
+        best_pf = confidence.get('best_profit_factor', 1.0)
+        best_sharpe = confidence.get('best_sharpe', 0)
+
+        # Build per-contract score
+        scored = []
+        for sym, name, cat, pv, risk_tier in self.FUTURES_CATALOG:
+            # Base confidence from tournament
+            score = overall_conf
+
+            # Adjust for strategy characteristics vs instrument properties
+            # Trend strategies do well on equity indices and energies
+            if cat in ("Equity Index", "Energy"):
+                score += best_sharpe * 3
+            # Mean reversion favours treasuries and currencies
+            if cat in ("Treasuries", "Currency"):
+                score += (best_wr - 50) * 0.4
+            # Breakout works well on metals and agriculture
+            if cat in ("Metals", "Agriculture"):
+                score += (best_pf - 1.0) * 5
+
+            # Penalise high point-value contracts for smaller accounts
+            if risk_tier == 3:
+                score -= 8
+            elif risk_tier == 1:
+                score += 5  # Micros are safer
+
+            # Clamp
+            score = max(10, min(95, score))
+            scored.append((sym, name, cat, pv, risk_tier, score))
+
+        # Sort descending by score
+        scored.sort(key=lambda x: x[5], reverse=True)
+
+        # Populate table
+        self.rec_table.setRowCount(len(scored))
+        risk_labels = {1: "Low", 2: "Medium", 3: "High"}
+        risk_colors = {1: "#00ff41", 2: "#ffcc00", 3: "#ff4444"}
+
+        for i, (sym, name, cat, pv, rt, sc) in enumerate(scored):
+            # Recommendation text
+            if sc >= 70:
+                rec = "Strong Buy"
+                rec_color = "#00ff41"
+            elif sc >= 55:
+                rec = "Consider"
+                rec_color = "#00ccff"
+            elif sc >= 40:
+                rec = "Neutral"
+                rec_color = "#ffcc00"
+            else:
+                rec = "Avoid"
+                rec_color = "#ff4444"
+
+            items = [
+                (f"{sym}  {name}", "#eee"),
+                (cat, "#00ccff"),
+                (f"${pv:,.2f}", "#eee"),
+                (f"{sc:.0f}%", "#00ff41" if sc >= 70 else "#ffcc00" if sc >= 50 else "#ff4444"),
+                (risk_labels[rt], risk_colors[rt]),
+                (rec, rec_color),
+            ]
+
+            for j, (text, color) in enumerate(items):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(color))
+                if i < 3:
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                self.rec_table.setItem(i, j, item)
+
+        top_names = [scored[k][1] for k in range(min(3, len(scored)))]
+        self.rec_status.setText(f"Top picks: {', '.join(top_names)}")
+        self.rec_status.setStyleSheet("color: #00ff41; font-size: 10px;")
 
     def set_confidence(self, overall, trend=None, signal=None, risk=None,
                        consistency=None):
