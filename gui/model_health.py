@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Model Health Visualization Widget
-Shows confidence levels, profit tracking, and model performance metrics
+Shows confidence levels, profit tracking, and model performance metrics.
+Displays real data from strategy tournament results (not random simulation).
 """
 
 from PyQt5.QtWidgets import (
@@ -9,11 +10,11 @@ from PyQt5.QtWidgets import (
     QFrame, QProgressBar, QGroupBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QSplitter
 )
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QColor, QPainter, QPen, QBrush
-from datetime import datetime, timedelta
-import random
-import math
+from datetime import datetime
+import json
+import os
 
 
 class CircularGauge(QWidget):
@@ -34,7 +35,6 @@ class CircularGauge(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Calculate dimensions
         width = self.width()
         height = self.height()
         size = min(width, height) - 20
@@ -72,23 +72,17 @@ class CircularGauge(QWidget):
 
 
 class ProfitChart(QWidget):
-    """Simple profit/loss chart"""
+    """Equity curve chart showing backtest performance"""
 
     def __init__(self):
         super().__init__()
         self.data = []
         self.setMinimumHeight(200)
-        self.is_simulation = True
+        self.label = ""
 
-    def set_data(self, data, is_simulation=True):
-        self.data = data[-50:]  # Keep last 50 points
-        self.is_simulation = is_simulation
-        self.update()
-
-    def add_point(self, value):
-        self.data.append(value)
-        if len(self.data) > 50:
-            self.data.pop(0)
+    def set_data(self, data, label=""):
+        self.data = data[-50:] if len(data) > 50 else data
+        self.label = label
         self.update()
 
     def paintEvent(self, event):
@@ -102,18 +96,19 @@ class ProfitChart(QWidget):
         # Draw background
         painter.fillRect(0, 0, width, height, QColor("#0f0f1a"))
 
-        # Draw simulation notice if applicable
-        if self.is_simulation:
-            painter.setPen(QColor("#ffcc00"))
+        # Label
+        if self.label:
+            painter.setPen(QColor("#00ff41"))
             font = QFont("Hack", 9)
             painter.setFont(font)
-            painter.drawText(width - 150, 15, "SIMULATION DATA")
+            painter.drawText(width - 200, 15, self.label)
 
         if not self.data:
             painter.setPen(QColor("#666"))
             font = QFont("Hack", 12)
             painter.setFont(font)
-            painter.drawText(0, 0, width, height, Qt.AlignCenter, "No data yet")
+            painter.drawText(0, 0, width, height, Qt.AlignCenter,
+                             "Run tournament to see equity curve")
             return
 
         # Draw grid
@@ -123,23 +118,24 @@ class ProfitChart(QWidget):
             painter.drawLine(padding, y, width - padding, y)
 
         # Calculate scale
-        min_val = min(self.data) if self.data else 0
-        max_val = max(self.data) if self.data else 1
+        min_val = min(self.data)
+        max_val = max(self.data)
         if min_val == max_val:
             min_val -= 100
             max_val += 100
 
         range_val = max_val - min_val
 
-        # Draw zero line if in range
-        if min_val <= 0 <= max_val:
-            zero_y = height - padding - ((0 - min_val) / range_val) * (height - 2 * padding)
+        # Draw zero/starting line if in range
+        start_val = self.data[0] if self.data else 0
+        if min_val <= start_val <= max_val:
+            start_y = height - padding - ((start_val - min_val) / range_val) * (height - 2 * padding)
             painter.setPen(QPen(QColor("#666"), 1, Qt.DashLine))
-            painter.drawLine(padding, int(zero_y), width - padding, int(zero_y))
+            painter.drawLine(padding, int(start_y), width - padding, int(start_y))
             painter.setPen(QColor("#888"))
             font = QFont("Hack", 8)
             painter.setFont(font)
-            painter.drawText(5, int(zero_y) + 4, "$0")
+            painter.drawText(5, int(start_y) + 4, f"${start_val:,.0f}")
 
         # Draw profit line
         if len(self.data) > 1:
@@ -152,26 +148,12 @@ class ProfitChart(QWidget):
                 y1 = height - padding - ((self.data[i] - min_val) / range_val) * (height - 2 * padding)
                 y2 = height - padding - ((self.data[i + 1] - min_val) / range_val) * (height - 2 * padding)
 
-                # Color based on direction
                 if self.data[i + 1] >= self.data[i]:
                     painter.setPen(QPen(QColor("#00ff41"), 2))
                 else:
                     painter.setPen(QPen(QColor("#ff4444"), 2))
 
                 painter.drawLine(int(x1), int(y1), int(x2), int(y2))
-
-            # Draw points
-            for i, val in enumerate(self.data):
-                x = padding + i * step
-                y = height - padding - ((val - min_val) / range_val) * (height - 2 * padding)
-
-                if val >= 0:
-                    painter.setBrush(QBrush(QColor("#00ff41")))
-                else:
-                    painter.setBrush(QBrush(QColor("#ff4444")))
-
-                painter.setPen(Qt.NoPen)
-                painter.drawEllipse(int(x) - 3, int(y) - 3, 6, 6)
 
         # Draw labels
         painter.setPen(QColor("#888"))
@@ -183,11 +165,13 @@ class ProfitChart(QWidget):
         # Current value
         if self.data:
             current = self.data[-1]
-            color = "#00ff41" if current >= 0 else "#ff4444"
+            start = self.data[0]
+            pnl = current - start
+            color = "#00ff41" if pnl >= 0 else "#ff4444"
             painter.setPen(QColor(color))
             font = QFont("Hack", 14, QFont.Bold)
             painter.setFont(font)
-            painter.drawText(width - 120, 35, f"${current:,.2f}")
+            painter.drawText(width - 150, 35, f"${pnl:+,.2f}")
 
 
 class HealthMetric(QFrame):
@@ -213,19 +197,16 @@ class HealthMetric(QFrame):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 5, 10, 5)
 
-        # Status indicator
         self.status_label = QLabel("●")
         self.update_status(self.status)
         layout.addWidget(self.status_label)
 
-        # Name
         name_label = QLabel(self.name)
         name_label.setStyleSheet("color: #888;")
         layout.addWidget(name_label)
 
         layout.addStretch()
 
-        # Value
         self.value_label = QLabel(str(self.value))
         self.value_label.setStyleSheet("color: #eee; font-weight: bold;")
         layout.addWidget(self.value_label)
@@ -248,20 +229,32 @@ class HealthMetric(QFrame):
             self.update_status(status)
 
 
+class TournamentWorker(QThread):
+    """Background worker for running strategy tournament"""
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(dict)
+    error = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from strategy.tournament import run_tournament
+            result = run_tournament(progress_callback=self.progress.emit)
+            self.finished.emit(result.to_dict())
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class ModelHealthWidget(QWidget):
-    """Model health and confidence visualization"""
+    """Model health and confidence visualization - data-driven, not random"""
 
     def __init__(self):
         super().__init__()
-        self.profit_history = [0]
-        self.confidence = 50
-        self.is_trading = False
+        self.tournament_data = None
+        self.is_running = False
         self.setup_ui()
 
-        # Simulation timer for demo
-        self.sim_timer = QTimer()
-        self.sim_timer.timeout.connect(self.simulate_update)
-        self.sim_timer.start(2000)
+        # Load cached tournament results on startup
+        QTimer.singleShot(500, self._load_cached_results)
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -288,14 +281,35 @@ class ModelHealthWidget(QWidget):
         gauge_layout.addWidget(gauge_title)
 
         self.confidence_gauge = CircularGauge("Strategy")
-        self.confidence_gauge.set_value(75)
+        self.confidence_gauge.set_value(0)
         gauge_layout.addWidget(self.confidence_gauge, alignment=Qt.AlignCenter)
 
-        # Explanation
-        confidence_info = QLabel("Based on recent signal accuracy\nand market conditions")
-        confidence_info.setStyleSheet("color: #666; font-size: 10px;")
-        confidence_info.setAlignment(Qt.AlignCenter)
-        gauge_layout.addWidget(confidence_info)
+        self.confidence_info = QLabel("Run tournament to assess\nstrategy confidence")
+        self.confidence_info.setStyleSheet("color: #666; font-size: 10px;")
+        self.confidence_info.setAlignment(Qt.AlignCenter)
+        gauge_layout.addWidget(self.confidence_info)
+
+        # Run tournament button
+        from PyQt5.QtWidgets import QPushButton
+        self.run_btn = QPushButton("Run Strategy Tournament")
+        self.run_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #00ff41;
+                color: #000;
+                font-weight: bold;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #00cc33;
+            }
+            QPushButton:disabled {
+                background-color: #2a2a3e;
+                color: #666;
+            }
+        """)
+        self.run_btn.clicked.connect(self._run_tournament)
+        gauge_layout.addWidget(self.run_btn)
 
         gauges_layout.addWidget(gauge_frame)
 
@@ -315,7 +329,7 @@ class ModelHealthWidget(QWidget):
         comp_title.setStyleSheet("color: #00ccff; font-weight: bold;")
         components_layout.addWidget(comp_title)
 
-        comp_info = QLabel("Individual component performance metrics")
+        comp_info = QLabel("Based on backtest performance of best strategy")
         comp_info.setStyleSheet("color: #666; font-size: 10px;")
         components_layout.addWidget(comp_info)
 
@@ -328,8 +342,8 @@ class ModelHealthWidget(QWidget):
         self.risk_bar = self.create_confidence_bar("Risk Assessment")
         components_layout.addLayout(self.risk_bar['layout'])
 
-        self.sentiment_bar = self.create_confidence_bar("Sentiment Analysis")
-        components_layout.addLayout(self.sentiment_bar['layout'])
+        self.consistency_bar = self.create_confidence_bar("Consistency (MFFU)")
+        components_layout.addLayout(self.consistency_bar['layout'])
 
         components_layout.addStretch()
         gauges_layout.addWidget(components_frame)
@@ -346,46 +360,48 @@ class ModelHealthWidget(QWidget):
         """)
         perf_layout = QVBoxLayout(perf_frame)
 
-        perf_title = QLabel("PERFORMANCE SUMMARY")
+        perf_title = QLabel("BEST STRATEGY PERFORMANCE")
         perf_title.setStyleSheet("color: #ffcc00; font-weight: bold;")
         perf_layout.addWidget(perf_title)
 
-        # Mode indicator
-        self.mode_label = QLabel("Mode: SIMULATION")
-        self.mode_label.setStyleSheet("color: #ffcc00; font-size: 10px;")
-        perf_layout.addWidget(self.mode_label)
+        self.strategy_name_label = QLabel("Strategy: --")
+        self.strategy_name_label.setStyleSheet("color: #00ff41; font-size: 11px;")
+        perf_layout.addWidget(self.strategy_name_label)
 
-        self.total_pnl_label = QLabel("$0.00")
-        self.total_pnl_label.setStyleSheet("color: #00ff41; font-size: 28px; font-weight: bold;")
+        self.total_pnl_label = QLabel("--")
+        self.total_pnl_label.setStyleSheet(
+            "color: #888; font-size: 28px; font-weight: bold;")
         self.total_pnl_label.setAlignment(Qt.AlignCenter)
         perf_layout.addWidget(self.total_pnl_label)
 
-        pnl_subtitle = QLabel("Simulated P&L")
+        pnl_subtitle = QLabel("Backtest Net P&L")
         pnl_subtitle.setStyleSheet("color: #666;")
         pnl_subtitle.setAlignment(Qt.AlignCenter)
         perf_layout.addWidget(pnl_subtitle)
 
         perf_grid = QGridLayout()
 
-        self.win_rate_label = QLabel("--")
-        self.win_rate_label.setStyleSheet("color: #00ff41; font-weight: bold;")
-        perf_grid.addWidget(QLabel("Win Rate:"), 0, 0)
-        perf_grid.addWidget(self.win_rate_label, 0, 1)
+        metrics_defs = [
+            ("Win Rate:", "win_rate_label", "--"),
+            ("Profit Factor:", "profit_factor_label", "--"),
+            ("Sharpe Ratio:", "sharpe_label", "--"),
+            ("Max Drawdown:", "max_dd_label", "--"),
+            ("Total Trades:", "trades_label", "--"),
+            ("Avg Trade:", "avg_trade_label", "--"),
+        ]
 
-        self.profit_factor_label = QLabel("--")
-        self.profit_factor_label.setStyleSheet("color: #00ccff; font-weight: bold;")
-        perf_grid.addWidget(QLabel("Profit Factor:"), 1, 0)
-        perf_grid.addWidget(self.profit_factor_label, 1, 1)
+        label_colors = ["#00ff41", "#00ccff", "#ffcc00", "#ff4444", "#eee", "#eee"]
 
-        self.sharpe_label = QLabel("--")
-        self.sharpe_label.setStyleSheet("color: #ffcc00; font-weight: bold;")
-        perf_grid.addWidget(QLabel("Sharpe Ratio:"), 2, 0)
-        perf_grid.addWidget(self.sharpe_label, 2, 1)
+        for i, (text, attr, default) in enumerate(metrics_defs):
+            label = QLabel(text)
+            label.setStyleSheet("color: #888;")
+            perf_grid.addWidget(label, i, 0)
 
-        self.max_dd_label = QLabel("--")
-        self.max_dd_label.setStyleSheet("color: #ff4444; font-weight: bold;")
-        perf_grid.addWidget(QLabel("Max Drawdown:"), 3, 0)
-        perf_grid.addWidget(self.max_dd_label, 3, 1)
+            val_label = QLabel(default)
+            val_label.setStyleSheet(
+                f"color: {label_colors[i]}; font-weight: bold;")
+            setattr(self, attr, val_label)
+            perf_grid.addWidget(val_label, i, 1)
 
         perf_layout.addLayout(perf_grid)
         perf_layout.addStretch()
@@ -393,7 +409,65 @@ class ModelHealthWidget(QWidget):
 
         layout.addLayout(gauges_layout)
 
-        # Profit chart
+        # Strategy Rankings Table
+        rankings_frame = QFrame()
+        rankings_frame.setStyleSheet("""
+            QFrame {
+                background-color: #16213e;
+                border: 1px solid #3a3a5e;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        rankings_layout = QVBoxLayout(rankings_frame)
+
+        rankings_header = QHBoxLayout()
+        rankings_title = QLabel("STRATEGY RANKINGS")
+        rankings_title.setStyleSheet("color: #00ff41; font-weight: bold;")
+        rankings_header.addWidget(rankings_title)
+        rankings_header.addStretch()
+
+        self.tournament_status = QLabel("No tournament results")
+        self.tournament_status.setStyleSheet("color: #666; font-size: 10px;")
+        rankings_header.addWidget(self.tournament_status)
+        rankings_layout.addLayout(rankings_header)
+
+        self.rankings_table = QTableWidget()
+        self.rankings_table.setColumnCount(8)
+        self.rankings_table.setHorizontalHeaderLabels([
+            "Rank", "Strategy", "Return", "Win Rate",
+            "Profit Factor", "Sharpe", "Max DD", "Score"
+        ])
+        self.rankings_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch)
+        self.rankings_table.setStyleSheet("""
+            QTableWidget {
+                background-color: #0f0f1a;
+                color: #eee;
+                border: 1px solid #3a3a5e;
+                gridline-color: #3a3a5e;
+            }
+            QHeaderView::section {
+                background-color: #16213e;
+                color: #00ff41;
+                padding: 5px;
+                border: 1px solid #3a3a5e;
+                font-weight: bold;
+            }
+            QTableWidget::item {
+                padding: 5px;
+            }
+            QTableWidget::item:selected {
+                background-color: #3a3a5e;
+            }
+        """)
+        self.rankings_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.rankings_table.setSelectionBehavior(QTableWidget.SelectRows)
+        rankings_layout.addWidget(self.rankings_table)
+
+        layout.addWidget(rankings_frame)
+
+        # Equity curve
         chart_frame = QFrame()
         chart_frame.setStyleSheet("""
             QFrame {
@@ -406,37 +480,18 @@ class ModelHealthWidget(QWidget):
         chart_layout = QVBoxLayout(chart_frame)
 
         chart_header = QHBoxLayout()
-        chart_title = QLabel("EQUITY CURVE")
+        chart_title = QLabel("EQUITY CURVE (Best Strategy Backtest)")
         chart_title.setStyleSheet("color: #00ff41; font-weight: bold;")
         chart_header.addWidget(chart_title)
-
         chart_header.addStretch()
 
-        # Chart info/explanation
-        chart_info = QLabel("Simulated performance - not actual trading results")
-        chart_info.setStyleSheet("color: #ffcc00; font-size: 10px;")
-        chart_header.addWidget(chart_info)
-
-        self.chart_status = QLabel("● Demo Mode")
-        self.chart_status.setStyleSheet("color: #ffcc00;")
+        self.chart_status = QLabel("No data")
+        self.chart_status.setStyleSheet("color: #666;")
         chart_header.addWidget(self.chart_status)
         chart_layout.addLayout(chart_header)
 
         self.profit_chart = ProfitChart()
         chart_layout.addWidget(self.profit_chart)
-
-        # Chart legend
-        legend_layout = QHBoxLayout()
-        legend_layout.addStretch()
-
-        legend_info = QLabel("This chart shows simulated equity based on demo data. "
-                            "Run actual trades or backtests for real performance data.")
-        legend_info.setStyleSheet("color: #666; font-size: 10px;")
-        legend_info.setWordWrap(True)
-        legend_layout.addWidget(legend_info)
-
-        legend_layout.addStretch()
-        chart_layout.addLayout(legend_layout)
 
         layout.addWidget(chart_frame)
 
@@ -456,13 +511,11 @@ class ModelHealthWidget(QWidget):
         health_title = QLabel("SYSTEM HEALTH")
         health_title.setStyleSheet("color: #00ff41; font-weight: bold;")
         health_header.addWidget(health_title)
-
         health_header.addStretch()
 
-        health_info = QLabel("Real-time system component status")
+        health_info = QLabel("System component status")
         health_info.setStyleSheet("color: #666; font-size: 10px;")
         health_header.addWidget(health_info)
-
         health_layout.addLayout(health_header)
 
         metrics_grid = QGridLayout()
@@ -473,8 +526,8 @@ class ModelHealthWidget(QWidget):
             ("Data Feed", "Demo Mode", "warning"),
             ("Order Execution", "Paper Only", "warning"),
             ("Risk Monitor", "Active", "ok"),
-            ("News Feed", "Active", "ok"),
-            ("Model Status", "Ready", "ok"),
+            ("Strategy Engine", "Ready", "ok"),
+            ("Tournament", "Not Run", "inactive"),
         ]
 
         for i, (name, value, status) in enumerate(metrics):
@@ -491,12 +544,12 @@ class ModelHealthWidget(QWidget):
 
         label = QLabel(name)
         label.setStyleSheet("color: #888;")
-        label.setMinimumWidth(120)
+        label.setMinimumWidth(140)
         layout.addWidget(label)
 
         bar = QProgressBar()
         bar.setRange(0, 100)
-        bar.setValue(50)
+        bar.setValue(0)
         bar.setStyleSheet("""
             QProgressBar {
                 background-color: #0f0f1a;
@@ -506,14 +559,14 @@ class ModelHealthWidget(QWidget):
                 text-align: center;
             }
             QProgressBar::chunk {
-                background-color: #00ff41;
+                background-color: #3a3a5e;
                 border-radius: 3px;
             }
         """)
         layout.addWidget(bar)
 
-        value_label = QLabel("50%")
-        value_label.setStyleSheet("color: #00ff41; font-weight: bold;")
+        value_label = QLabel("--")
+        value_label.setStyleSheet("color: #666; font-weight: bold;")
         value_label.setMinimumWidth(45)
         layout.addWidget(value_label)
 
@@ -547,55 +600,153 @@ class ModelHealthWidget(QWidget):
         """)
 
     def update_health(self):
-        """Update health display - called by main window"""
-        pass  # Real updates would happen here
+        """Update health display - called by main window timer"""
+        pass  # Data is static from tournament results, no random updates
 
-    def simulate_update(self):
-        """Simulate updates for demo"""
-        # Update confidence values
-        self.confidence = max(20, min(95, self.confidence + random.uniform(-5, 5)))
-        self.confidence_gauge.set_value(self.confidence)
+    def _load_cached_results(self):
+        """Load previously saved tournament results"""
+        try:
+            from strategy.tournament import get_latest_tournament_results
+            result = get_latest_tournament_results()
+            if result:
+                self._apply_tournament_data(result.to_dict())
+        except Exception:
+            pass
 
-        self.update_confidence_bar(self.trend_bar, random.uniform(50, 90))
-        self.update_confidence_bar(self.signal_bar, random.uniform(40, 85))
-        self.update_confidence_bar(self.risk_bar, random.uniform(60, 95))
-        self.update_confidence_bar(self.sentiment_bar, random.uniform(30, 80))
+    def _run_tournament(self):
+        """Run strategy tournament in background"""
+        if self.is_running:
+            return
 
-        # Update profit chart with simulation data
-        last_profit = self.profit_history[-1] if self.profit_history else 0
-        change = random.uniform(-50, 75)  # Slightly bullish bias for demo
-        new_profit = last_profit + change
-        self.profit_history.append(new_profit)
-        self.profit_chart.set_data(self.profit_history, is_simulation=True)
+        self.is_running = True
+        self.run_btn.setEnabled(False)
+        self.run_btn.setText("Running Tournament...")
+        self.tournament_status.setText("Tournament in progress...")
+        self.tournament_status.setStyleSheet("color: #ffcc00; font-size: 10px;")
+        self.health_metrics["Tournament"].set_value("Running...", "warning")
 
-        # Update P&L display
-        color = "#00ff41" if new_profit >= 0 else "#ff4444"
-        self.total_pnl_label.setText(f"${new_profit:,.2f}")
-        self.total_pnl_label.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
+        self.worker = TournamentWorker()
+        self.worker.progress.connect(self._on_tournament_progress)
+        self.worker.finished.connect(self._on_tournament_finished)
+        self.worker.error.connect(self._on_tournament_error)
+        self.worker.start()
 
-        # Update performance metrics (simulated)
-        self.win_rate_label.setText(f"{random.uniform(45, 65):.1f}%")
-        self.profit_factor_label.setText(f"{random.uniform(1.2, 2.5):.2f}")
-        self.sharpe_label.setText(f"{random.uniform(0.8, 2.2):.2f}")
-        self.max_dd_label.setText(f"${random.uniform(200, 800):.2f}")
+    def _on_tournament_progress(self, message):
+        self.tournament_status.setText(message)
 
-    def set_pnl(self, pnl, is_simulation=False):
-        """Set the P&L value"""
-        self.profit_history.append(pnl)
-        self.profit_chart.set_data(self.profit_history, is_simulation=is_simulation)
+    def _on_tournament_finished(self, result_dict):
+        self.is_running = False
+        self.run_btn.setEnabled(True)
+        self.run_btn.setText("Run Strategy Tournament")
+        self.health_metrics["Tournament"].set_value("Complete", "ok")
+        self._apply_tournament_data(result_dict)
 
-        color = "#00ff41" if pnl >= 0 else "#ff4444"
-        self.total_pnl_label.setText(f"${pnl:,.2f}")
-        self.total_pnl_label.setStyleSheet(f"color: {color}; font-size: 28px; font-weight: bold;")
+    def _on_tournament_error(self, error_msg):
+        self.is_running = False
+        self.run_btn.setEnabled(True)
+        self.run_btn.setText("Run Strategy Tournament")
+        self.tournament_status.setText(f"Error: {error_msg}")
+        self.tournament_status.setStyleSheet("color: #ff4444; font-size: 10px;")
+        self.health_metrics["Tournament"].set_value("Error", "error")
 
-        if not is_simulation:
-            self.mode_label.setText("Mode: LIVE DATA")
-            self.mode_label.setStyleSheet("color: #00ff41; font-size: 10px;")
-            self.chart_status.setText("● Live")
-            self.chart_status.setStyleSheet("color: #00ff41;")
+    def _apply_tournament_data(self, data):
+        """Apply tournament results to all widgets"""
+        self.tournament_data = data
+        scores = data.get('scores', [])
+        confidence = data.get('confidence_metrics', {})
 
-    def set_confidence(self, overall, trend=None, signal=None, risk=None, sentiment=None):
-        """Set confidence values"""
+        # Update confidence gauge
+        overall = confidence.get('overall', 50)
+        self.confidence_gauge.set_value(overall)
+
+        best_name = data.get('best_strategy', 'Unknown')
+        self.confidence_info.setText(
+            f"Best: {best_name}\n"
+            f"Tested {data.get('num_strategies', 0)} strategies"
+        )
+
+        # Update component bars
+        self.update_confidence_bar(
+            self.trend_bar, confidence.get('trend_detection', 50))
+        self.update_confidence_bar(
+            self.signal_bar, confidence.get('signal_quality', 50))
+        self.update_confidence_bar(
+            self.risk_bar, confidence.get('risk_assessment', 50))
+
+        # Consistency from best strategy
+        best_score = scores[0] if scores else {}
+        consistency_val = best_score.get('consistency_score', 0)
+        # For prop firms, consistency < 50% is good
+        if consistency_val > 0:
+            cons_confidence = max(0, 100 - consistency_val * 2)
+        else:
+            cons_confidence = 50
+        self.update_confidence_bar(self.consistency_bar, cons_confidence)
+
+        # Update performance summary
+        if scores:
+            best = scores[0]
+            self.strategy_name_label.setText(f"Strategy: {best.get('name', '--')}")
+
+            pnl = best.get('total_return', 0)
+            color = "#00ff41" if pnl >= 0 else "#ff4444"
+            self.total_pnl_label.setText(f"${pnl:+,.2f}")
+            self.total_pnl_label.setStyleSheet(
+                f"color: {color}; font-size: 28px; font-weight: bold;")
+
+            self.win_rate_label.setText(f"{best.get('win_rate', 0):.1f}%")
+            self.profit_factor_label.setText(
+                f"{best.get('profit_factor', 0):.2f}")
+            self.sharpe_label.setText(f"{best.get('sharpe_ratio', 0):.2f}")
+            self.max_dd_label.setText(f"${best.get('max_drawdown', 0):,.2f}")
+            self.trades_label.setText(f"{best.get('num_trades', 0)}")
+            self.avg_trade_label.setText(
+                f"${best.get('avg_trade', 0):,.2f}")
+
+        # Update rankings table
+        self.rankings_table.setRowCount(len(scores))
+        for i, s in enumerate(scores):
+            pnl = s.get('total_return', 0)
+            pnl_color = "#00ff41" if pnl >= 0 else "#ff4444"
+
+            items = [
+                (f"#{i+1}", "#eee"),
+                (s.get('name', ''), "#00ccff"),
+                (f"${pnl:+,.2f}", pnl_color),
+                (f"{s.get('win_rate', 0):.1f}%", "#eee"),
+                (f"{s.get('profit_factor', 0):.2f}", "#eee"),
+                (f"{s.get('sharpe_ratio', 0):.2f}", "#eee"),
+                (f"${s.get('max_drawdown', 0):,.2f}", "#ff4444"),
+                (f"{s.get('composite_score', 0):.1f}", "#ffcc00"),
+            ]
+
+            for j, (text, color) in enumerate(items):
+                item = QTableWidgetItem(text)
+                item.setForeground(QColor(color))
+                if i == 0:
+                    font = item.font()
+                    font.setBold(True)
+                    item.setFont(font)
+                self.rankings_table.setItem(i, j, item)
+
+        # Update timestamp
+        ts = data.get('timestamp', '')
+        if ts:
+            try:
+                dt = datetime.fromisoformat(ts)
+                self.tournament_status.setText(
+                    f"Last run: {dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            except (ValueError, TypeError):
+                self.tournament_status.setText(f"Results loaded")
+        self.tournament_status.setStyleSheet("color: #00ff41; font-size: 10px;")
+
+        # Update chart status
+        self.chart_status.setText(f"Best: {best_name}")
+        self.chart_status.setStyleSheet("color: #00ff41;")
+
+    def set_confidence(self, overall, trend=None, signal=None, risk=None,
+                       consistency=None):
+        """Set confidence values programmatically"""
         self.confidence_gauge.set_value(overall)
 
         if trend is not None:
@@ -604,8 +755,8 @@ class ModelHealthWidget(QWidget):
             self.update_confidence_bar(self.signal_bar, signal)
         if risk is not None:
             self.update_confidence_bar(self.risk_bar, risk)
-        if sentiment is not None:
-            self.update_confidence_bar(self.sentiment_bar, sentiment)
+        if consistency is not None:
+            self.update_confidence_bar(self.consistency_bar, consistency)
 
     def set_health_status(self, name, value, status):
         """Set health metric status"""
@@ -614,24 +765,11 @@ class ModelHealthWidget(QWidget):
 
     def set_live_mode(self, is_live):
         """Switch between live and simulation mode"""
-        self.is_trading = is_live
         if is_live:
-            self.mode_label.setText("Mode: LIVE")
-            self.mode_label.setStyleSheet("color: #00ff41; font-size: 10px;")
-            self.chart_status.setText("● Live")
-            self.chart_status.setStyleSheet("color: #00ff41;")
-
-            # Update health metrics for live mode
             self.health_metrics["API Connection"].set_value("Connected", "ok")
             self.health_metrics["Data Feed"].set_value("Live", "ok")
             self.health_metrics["Order Execution"].set_value("Ready", "ok")
         else:
-            self.mode_label.setText("Mode: SIMULATION")
-            self.mode_label.setStyleSheet("color: #ffcc00; font-size: 10px;")
-            self.chart_status.setText("● Demo Mode")
-            self.chart_status.setStyleSheet("color: #ffcc00;")
-
-            # Update health metrics for demo mode
             self.health_metrics["API Connection"].set_value("Simulated", "warning")
             self.health_metrics["Data Feed"].set_value("Demo Mode", "warning")
             self.health_metrics["Order Execution"].set_value("Paper Only", "warning")

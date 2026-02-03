@@ -24,7 +24,7 @@ from .logs_widget import LogsWidget
 
 
 class BacktestWorker(QThread):
-    """Background worker for running backtests"""
+    """Background worker for running backtests using strategy tournament"""
     progress = pyqtSignal(str)
     finished = pyqtSignal(dict)
     error = pyqtSignal(str)
@@ -38,11 +38,74 @@ class BacktestWorker(QThread):
             import pandas as pd
             import numpy as np
             from backtest.engine import BacktestEngine, BacktestConfig
+            from strategy.tournament import run_tournament, generate_realistic_data
+
+            self.progress.emit("Initializing strategy tournament...")
+
+            n_bars = self.config.get('num_bars', 2000)
+
+            # Run tournament (tests all strategies, picks the best)
+            tournament_result = run_tournament(
+                starting_balance=self.config.get('starting_balance', 50000),
+                max_loss_limit=self.config.get('max_loss_limit', 2000),
+                point_value=self.config.get('point_value', 5.0),
+                symbol=self.config.get('symbol', 'MES'),
+                n_bars=n_bars,
+                progress_callback=self.progress.emit,
+            )
+
+            self.progress.emit("Selecting best strategy and compiling results...")
+
+            # Get the best strategy's detailed results
+            best_score = tournament_result.scores[0] if tournament_result.scores else None
+
+            if best_score is None:
+                self.error.emit("No strategies produced results")
+                return
+
+            # Now re-run only the best strategy for detailed trade data
             from strategy.trend_following import TrendFollowingStrategy
+            from strategy.mean_reversion import MeanReversionStrategy
+            from strategy.breakout import BreakoutStrategy
+            from strategy.adaptive import AdaptiveStrategy
 
-            self.progress.emit("Initializing backtest...")
+            strategy_map = {
+                'TrendFollowing': lambda: TrendFollowingStrategy(
+                    name="TrendFollowing",
+                    params={'adx_threshold': 22.0, 'stop_loss_atr_mult': 1.8}),
+                'MeanReversion': lambda: MeanReversionStrategy(
+                    name="MeanReversion",
+                    params={'require_reversal_candle': False,
+                            'stop_loss_atr_mult': 1.5}),
+                'Breakout': lambda: BreakoutStrategy(
+                    name="Breakout",
+                    params={'donchian_period': 18, 'volume_threshold': 1.2}),
+                'Adaptive': lambda: AdaptiveStrategy(
+                    name="Adaptive",
+                    params={'entry_threshold': 60}),
+                'TrendFollowing_Aggressive': lambda: TrendFollowingStrategy(
+                    name="TrendFollowing_Aggressive",
+                    params={'adx_threshold': 18.0, 'stop_loss_atr_mult': 1.5,
+                            'take_profit_atr_mult': 4.0}),
+                'MeanReversion_Relaxed': lambda: MeanReversionStrategy(
+                    name="MeanReversion_Relaxed",
+                    params={'require_reversal_candle': False,
+                            'bb_entry_threshold': 0.15,
+                            'rsi_oversold': 35, 'rsi_overbought': 65}),
+            }
 
-            # Create backtest config
+            best_name = best_score.name
+            strategy_factory = strategy_map.get(best_name)
+            if strategy_factory is None:
+                # Default fallback
+                strategy_factory = lambda: AdaptiveStrategy(name="Adaptive")
+
+            self.progress.emit(f"Re-running best strategy ({best_name}) for detailed results...")
+
+            strategy = strategy_factory()
+            data = generate_realistic_data(n_bars)
+            prepared = strategy.prepare_data(data.copy())
+
             bt_config = BacktestConfig(
                 starting_balance=self.config.get('starting_balance', 50000),
                 symbol=self.config.get('symbol', 'MES'),
@@ -53,51 +116,14 @@ class BacktestWorker(QThread):
                 max_contracts=self.config.get('max_contracts', 5)
             )
 
-            self.progress.emit("Generating historical data...")
-
-            # Generate sample data for backtest
-            np.random.seed(42)
-            n_bars = self.config.get('num_bars', 2000)
-            dates = pd.date_range(start='2024-01-01', periods=n_bars, freq='5min')
-
-            # Generate trending price data with volatility
-            trend = np.cumsum(np.random.randn(n_bars) * 0.3 + 0.01)
-            noise = np.random.randn(n_bars) * 0.5
-            close = 5000 + trend + noise
-
-            high = close + np.abs(np.random.randn(n_bars) * 1.0)
-            low = close - np.abs(np.random.randn(n_bars) * 1.0)
-            volume = np.random.randint(1000, 10000, n_bars)
-
-            df = pd.DataFrame({
-                'open': np.roll(close, 1),
-                'high': high,
-                'low': low,
-                'close': close,
-                'volume': volume
-            }, index=dates)
-            df['open'].iloc[0] = df['close'].iloc[0]
-
-            self.progress.emit("Preparing strategy...")
-
-            # Create and prepare strategy
-            strategy = TrendFollowingStrategy(
-                name="TrendFollowing_Backtest",
-                params={'adx_threshold': 20.0}
-            )
-            df = strategy.prepare_data(df)
-
-            self.progress.emit("Running backtest simulation...")
-
-            # Run backtest
             engine = BacktestEngine(bt_config)
-            result = engine.run(strategy, df, start_idx=250)
+            result = engine.run(strategy, prepared, start_idx=250)
 
             self.progress.emit("Calculating results...")
 
-            # Convert result to dictionary
+            # Build result dict with tournament context
             result_dict = {
-                'strategy_name': result.strategy_name,
+                'strategy_name': f"{result.strategy_name} (Tournament Winner)",
                 'start_date': str(result.start_date),
                 'end_date': str(result.end_date),
                 'starting_balance': bt_config.starting_balance,
@@ -120,6 +146,8 @@ class BacktestWorker(QThread):
                 'best_day': result.best_day,
                 'worst_day': result.worst_day,
                 'consistency_score': result.consistency_score,
+                'tournament_rankings': tournament_result.rankings,
+                'tournament_scores': [s.to_dict() for s in tournament_result.scores],
                 'trades': [
                     {
                         'entry_time': str(t.entry_time),
@@ -135,7 +163,7 @@ class BacktestWorker(QThread):
                 ]
             }
 
-            self.progress.emit("Backtest complete!")
+            self.progress.emit("Tournament backtest complete!")
             self.finished.emit(result_dict)
 
         except Exception as e:
@@ -419,6 +447,27 @@ Consistency Score:    {r['consistency_score']:>12.1f}%
 
         if len(r['trades']) > 10:
             report += f"\n\n... and {len(r['trades']) - 10} more trades"
+
+        # Add tournament rankings if available
+        if 'tournament_rankings' in r:
+            report += f"""
+
+================================================================================
+                        STRATEGY TOURNAMENT RANKINGS
+================================================================================
+"""
+            for i, name in enumerate(r['tournament_rankings']):
+                medal = ">>>" if i == 0 else "   "
+                score_data = r.get('tournament_scores', [{}] * len(r['tournament_rankings']))
+                if i < len(score_data):
+                    s = score_data[i]
+                    pnl = s.get('total_return', 0)
+                    wr = s.get('win_rate', 0)
+                    pf = s.get('profit_factor', 0)
+                    cs = s.get('composite_score', 0)
+                    report += f"\n{medal} #{i+1} {name:<30} P/L: ${pnl:>+10,.2f}  WR: {wr:>5.1f}%  PF: {pf:>5.2f}  Score: {cs:>5.1f}"
+                else:
+                    report += f"\n{medal} #{i+1} {name}"
 
         self.results_text.setText(report)
 

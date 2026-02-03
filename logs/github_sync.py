@@ -11,7 +11,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List
 from dataclasses import dataclass
-from loguru import logger
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
